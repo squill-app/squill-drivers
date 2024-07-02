@@ -1,0 +1,19 @@
+[package]
+name = "squill-duckdb"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+duckdb = { version = "0.10.2", features = ["bundled"] }
+arrow-array = { workspace = true }
+squill-core = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+ctor = { workspace = true }

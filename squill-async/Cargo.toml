@@ -1,0 +1,17 @@
+[package]
+name = "squill-async"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+squill-core = { workspace = true }
+arrow-array = { workspace = true }
+crossbeam-channel = "0.5.13"
+futures = "0.3.30"
+tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros", "sync"] }
+tracing = "0.1.40"

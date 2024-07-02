@@ -1,0 +1,69 @@
+[workspace]
+members = [".", "squill-core", "squill-async", "squill-duckdb"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+license = "MIT"
+repository = "https://github.com/squill-app/squill-drivers"
+keywords = [
+    "database",
+    "async",
+    "postgres",
+    "postgresql",
+    "duckdb",
+    "sql",
+    "adapter",
+    "driver",
+]
+categories = ["database", "asynchronous"]
+edition = "2021"
+authors = ["Philippe Shampanier <pshampanier@gmail.com>"]
+# include = ["benches/*.rs", "src/**/*.rs", "Cargo.toml"]
+
+[workspace.dependencies]
+squill-core = { version = "0.1.0", path = "./squill-core" }
+squill-async = { version = "0.1.0", path = "./squill-async" }
+squill-duckdb = { version = "0.1.0", path = "./squill-duckdb" }
+squill-drivers = { version = "0.1.0", path = "./squill-drivers" }
+tracing = "0.1.40"
+arrow-schema = { version = "51.0.0" }
+arrow-array = { version = "51.0.0", default-features = false, features = [
+    "chrono-tz",
+] }
+tempfile = "3.10.1"
+lazy_static = "1.5.0"
+ctor = "0.2.8"
+url = "2.5.2"
+
+[package]
+name = "squill-drivers"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[lib]
+name = "squill_drivers"
+path = "src/lib.rs"
+
+[dependencies]
+squill-core = { workspace = true }
+squill-duckdb = { workspace = true, optional = true }
+squill-async = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = "0.5.1"
+comfy-table = "7.1.1"
+
+[features]
+default = ["duckdb", "async"]
+duckdb = ["squill-duckdb"]
+async = ["squill-async"]
+
+[[example]]
+name = "rows"
+required-features = ["duckdb"]
+path = "./examples/rows.rs"

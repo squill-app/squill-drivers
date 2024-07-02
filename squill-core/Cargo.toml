@@ -1,0 +1,18 @@
+[package]
+name = "squill-core"
+description = "The core of the squill driver library. This is not intended to be used directly."
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+lazy_static = { workspace = true }
+
+[dev-dependencies]
+ctor = { workspace = true }
