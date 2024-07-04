@@ -1,5 +1,5 @@
-use squill_drivers::{ Connection, Rows, Result, query };
 use comfy_table::Table;
+use squill_drivers::{query, Connection, Result, Rows};
 
 fn main() -> Result<()> {
     squill_drivers::register_drivers();
@@ -17,7 +17,8 @@ fn main() -> Result<()> {
         conn,
         r#"SELECT id, 'Employee #' || id as name
              FROM generate_series(1, 3) AS series(id)"#
-    )?.into();
+    )?
+    .into();
     for next_row in rows {
         let row = next_row?;
         println!("id: {}, name: {}", row.column::<i64>(0), row.column::<String>(1));
@@ -39,20 +40,14 @@ fn main() -> Result<()> {
         conn,
         r#"SELECT id, 'Employee #' || id as name
              FROM generate_series(1, 3) AS series(id)"#
-    )?.into();
+    )?
+    .into();
 
     let mut table = Table::new();
     table.load_preset(comfy_table::presets::UTF8_HORIZONTAL_ONLY);
     let mut row = rows.next();
     if let Some(Ok(ref row)) = row.as_ref() {
-        table.set_header(
-            row
-                .schema()
-                .fields()
-                .iter()
-                .map(|f| f.name().to_string())
-                .collect::<Vec<String>>()
-        );
+        table.set_header(row.schema().fields().iter().map(|f| f.name().to_string()).collect::<Vec<String>>());
     }
 
     loop {

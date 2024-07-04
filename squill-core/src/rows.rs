@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use crate::Result;
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
-use crate::Result;
+use std::sync::Arc;
 
 pub struct Rows<'i> {
     last_record_batch: Option<Arc<RecordBatch>>,
@@ -11,11 +11,7 @@ pub struct Rows<'i> {
 
 impl<'i> From<Box<dyn Iterator<Item = Result<RecordBatch>> + 'i>> for Rows<'i> {
     fn from(iterator: Box<dyn Iterator<Item = Result<RecordBatch>> + 'i>) -> Self {
-        Rows {
-            last_record_batch: None,
-            iterator,
-            index_in_batch: 0,
-        }
+        Rows { last_record_batch: None, iterator, index_in_batch: 0 }
     }
 }
 
@@ -80,7 +76,12 @@ macro_rules! impl_get_column {
     ($type:ty, $array_type:ident) => {
         impl GetColumn for $type {
             fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self {
-                record_batch.column(index).as_any().downcast_ref::<arrow_array::$array_type>().unwrap().value(index_in_batch)
+                record_batch
+                    .column(index)
+                    .as_any()
+                    .downcast_ref::<arrow_array::$array_type>()
+                    .unwrap()
+                    .value(index_in_batch)
             }
             fn get_column_by_name(record_batch: &RecordBatch, index_in_batch: usize, name: &str) -> Self {
                 match record_batch.schema().index_of(name) {
@@ -126,9 +127,8 @@ impl<'i> Iterator for Rows<'i> {
     type Item = Result<Row>;
 
     fn next(&mut self) -> Option<Result<Row>> {
-        if
-            self.last_record_batch.is_none() ||
-            self.index_in_batch >= self.last_record_batch.as_ref().unwrap().num_rows()
+        if self.last_record_batch.is_none()
+            || self.index_in_batch >= self.last_record_batch.as_ref().unwrap().num_rows()
         {
             self.last_record_batch = match self.iterator.next() {
                 Some(Ok(record_batch)) => Some(Arc::new(record_batch)),
@@ -149,29 +149,30 @@ impl<'i> Iterator for Rows<'i> {
 
 #[cfg(test)]
 mod tests {
-    use std::{ error::Error, sync::Arc };
-    use arrow_array::RecordBatch;
     use super::*;
+    use arrow_array::RecordBatch;
+    use std::{error::Error, sync::Arc};
 
     #[test]
     fn test_iterator_for_rows() {
-        let schema = Arc::new(
-            arrow_schema::Schema::new(vec![arrow_schema::Field::new("col0", arrow_schema::DataType::Int32, true)])
-        );
+        let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+            "col0",
+            arrow_schema::DataType::Int32,
+            true,
+        )]));
         let batch_records = vec![
             RecordBatch::try_new(schema.clone(), vec![Arc::new(arrow_array::Int32Array::from(vec![1, 2]))]),
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(arrow_array::Int32Array::from(vec![Some(3), None]))])
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(arrow_array::Int32Array::from(vec![Some(3), None]))]),
         ];
 
-        let boxed_iterator: Box<dyn Iterator<Item = Result<RecordBatch>>> = Box::new(
-            batch_records.into_iter().map(|result| {
+        let boxed_iterator: Box<dyn Iterator<Item = Result<RecordBatch>>> =
+            Box::new(batch_records.into_iter().map(|result| {
                 result.map_err(|arrow_error| {
                     // Convert `arrow_error` into the appropriate error type expected by
                     // `Result<RecordBatch, Box<dyn Error + Send + Sync>>`
                     Box::new(arrow_error) as Box<dyn Error + Send + Sync>
                 })
-            })
-        );
+            }));
         let mut expected_value: i32 = 1;
         for row in Rows::from(boxed_iterator) {
             assert!(row.is_ok());
@@ -188,14 +189,17 @@ mod tests {
     fn test_get_row_value() {
         macro_rules! test_get_row_value {
             ($data_type:ident, $arrow_data_type:ident, $array_type:ident, $value:expr) => {
-        let record_batch = RecordBatch::try_new(
-            Arc::new(
-                arrow_schema::Schema::new(vec![arrow_schema::Field::new("col0", arrow_schema::DataType::$arrow_data_type, false)])
-            ),
-            vec![Arc::new(arrow_array::$array_type::from(vec![$value]))]
-        ).unwrap();
+                let record_batch = RecordBatch::try_new(
+                    Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+                        "col0",
+                        arrow_schema::DataType::$arrow_data_type,
+                        false,
+                    )])),
+                    vec![Arc::new(arrow_array::$array_type::from(vec![$value]))],
+                )
+                .unwrap();
 
-        assert_eq!($data_type::get_column(&record_batch, 0, 0), $value);
+                assert_eq!($data_type::get_column(&record_batch, 0, 0), $value);
             };
         }
         test_get_row_value!(i8, Int8, Int8Array, i8::MAX);

@@ -1,12 +1,12 @@
 #![doc = include_str!("../README.md")]
+use crate::values::Adapter;
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
 use squill_core::Result;
-use crate::parameters::Adapter;
 
-mod factory;
 mod drivers;
-mod parameters;
+mod factory;
+mod values;
 
 /// The name of the driver for DuckDB.
 pub const DRIVER_DUCKDB: &str = "duckdb";
@@ -28,11 +28,7 @@ pub(crate) struct DuckDB {
 }
 
 impl DuckDB {
-    fn prepare_and_bind(
-        &self,
-        statement: String,
-        parameters: Parameters
-    ) -> Result<duckdb::Statement> {
+    fn prepare_and_bind(&self, statement: String, parameters: Parameters) -> Result<duckdb::Statement> {
         let mut stmt = self.conn.prepare(&statement)?;
         let expected = stmt.parameter_count();
         match parameters {
@@ -44,9 +40,7 @@ impl DuckDB {
             }
             Parameters::Positional(values) => {
                 if expected != values.len() {
-                    return Err(
-                        Box::new(duckdb::Error::InvalidParameterCount(expected, values.len()))
-                    );
+                    return Err(Box::new(duckdb::Error::InvalidParameterCount(expected, values.len())));
                 }
                 // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
                 // [`Statement::parameter_count`], inclusive.

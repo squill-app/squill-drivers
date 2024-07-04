@@ -1,8 +1,8 @@
-use arrow_array::RecordBatch;
 use crate::drivers::DriverConnection;
 use crate::factory::Factory;
 use crate::parameters::Parameters;
 use crate::Result;
+use arrow_array::RecordBatch;
 
 pub struct Connection {
     inner: Box<dyn DriverConnection>,
@@ -11,9 +11,7 @@ pub struct Connection {
 impl Connection {
     pub fn open(uri: &str) -> Result<Self> {
         let inner = Factory::open(uri)?;
-        Ok(Self {
-            inner,
-        })
+        Ok(Self { inner })
     }
 
     pub fn driver_name(&self) -> &str {
@@ -27,7 +25,7 @@ impl Connection {
     pub fn query<'c>(
         &'c self,
         statement: String,
-        parameters: Parameters
+        parameters: Parameters,
     ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>> {
         self.inner.query(statement, parameters)
     }
@@ -40,7 +38,7 @@ impl Connection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ execute, query };
+    use crate::{execute, query};
 
     #[test]
     fn test_connection() {

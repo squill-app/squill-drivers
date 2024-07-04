@@ -1,10 +1,10 @@
+use lazy_static::lazy_static;
 use std::sync::Arc;
 use std::sync::Mutex;
-use lazy_static::lazy_static;
 
-use crate::Result;
 use crate::drivers::DriverConnection;
 use crate::drivers::DriverFactory;
+use crate::Result;
 
 lazy_static! {
     pub static ref DRIVER_FACTORIES: Factory = Factory::new();
@@ -16,9 +16,7 @@ pub struct Factory {
 
 impl Factory {
     fn new() -> Factory {
-        Factory {
-            registered_factories: Mutex::new(Vec::new()),
-        }
+        Factory { registered_factories: Mutex::new(Vec::new()) }
     }
 
     fn find(&self, scheme: &str) -> Option<Arc<Box<dyn DriverFactory>>> {
@@ -40,12 +38,10 @@ impl Factory {
 
     pub fn open(uri: &str) -> Result<Box<dyn DriverConnection>> {
         match uri.split(':').next() {
-            Some(scheme) => {
-                match DRIVER_FACTORIES.find(scheme) {
-                    Some(driver) => driver.open(uri),
-                    None => Err(format!("No driver found for scheme: {}", scheme).into()),
-                }
-            }
+            Some(scheme) => match DRIVER_FACTORIES.find(scheme) {
+                Some(driver) => driver.open(uri),
+                None => Err(format!("No driver found for scheme: {}", scheme).into()),
+            },
             None => Err(format!("Invalid URI: {}", &uri).into()),
         }
     }

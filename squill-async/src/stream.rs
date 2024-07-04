@@ -1,7 +1,7 @@
-use std::pin::Pin;
-use std::task::Poll;
 use futures::Stream;
 use squill_core::Result;
+use std::pin::Pin;
+use std::task::Poll;
 
 use crate::Connection;
 
@@ -34,9 +34,9 @@ impl<'conn> Stream for RecordBatchStream<'conn> {
             Poll::Ready(Some(result)) => {
                 this.command_sent = false; // Reset the flag for the next fetch
                 match result {
-                    Ok(Some(batch)) => { Poll::Ready(Some(Ok(batch))) }
-                    Ok(None) => { Poll::Ready(None) }
-                    Err(e) => { Poll::Ready(Some(Err(e))) }
+                    Ok(Some(batch)) => Poll::Ready(Some(Ok(batch))),
+                    Ok(None) => Poll::Ready(None),
+                    Err(e) => Poll::Ready(Some(Err(e))),
                 }
             }
             Poll::Ready(None) => Poll::Ready(None), // Channel closed

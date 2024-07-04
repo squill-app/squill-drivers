@@ -17,3 +17,6 @@ url = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 ctor = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+uuid = { workspace = true }

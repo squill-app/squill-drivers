@@ -1,11 +1,11 @@
-use std::thread;
 use arrow_array::RecordBatch;
-use futures::future::{ err, BoxFuture };
-use tokio::sync::oneshot;
-use tracing::error;
-use squill_core::{ Result, Error };
+use futures::future::{err, BoxFuture};
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
+use squill_core::{Error, Result};
+use std::thread;
+use tokio::sync::oneshot;
+use tracing::error;
 
 use crate::RecordBatchStream;
 
@@ -14,22 +14,10 @@ pub struct Connection {
 }
 
 enum Command {
-    Close {
-        tx: oneshot::Sender<Result<()>>,
-    },
-    Execute {
-        statement: String,
-        parameters: Parameters,
-        tx: oneshot::Sender<Result<u64>>,
-    },
-    Query {
-        statement: String,
-        parameters: Parameters,
-        tx: oneshot::Sender<Result<()>>,
-    },
-    Fetch {
-        tx: tokio::sync::mpsc::Sender<Result<Option<RecordBatch>>>,
-    },
+    Close { tx: oneshot::Sender<Result<()>> },
+    Execute { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<u64>> },
+    Query { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<()>> },
+    Fetch { tx: tokio::sync::mpsc::Sender<Result<Option<RecordBatch>>> },
 }
 
 macro_rules! await_on {
@@ -64,15 +52,12 @@ macro_rules! send_response {
 
 impl Connection {
     pub fn open<T: Into<String>>(uri: T) -> BoxFuture<'static, Result<Self>> {
-        let (command_tx, command_rx): (
-            crossbeam_channel::Sender<Command>,
-            crossbeam_channel::Receiver<Command>,
-        ) = crossbeam_channel::bounded(1);
+        let (command_tx, command_rx): (crossbeam_channel::Sender<Command>, crossbeam_channel::Receiver<Command>) =
+            crossbeam_channel::bounded(1);
         let uri: String = uri.into();
         let (open_tx, open_rx) = oneshot::channel();
 
-        let thread_spawn_result = thread::Builder
-            ::new()
+        let thread_spawn_result = thread::Builder::new()
             // .name(params.thread_name.clone())
             .spawn(move || {
                 let inner_conn_result = Factory::open(&uri);
@@ -186,7 +171,7 @@ impl Connection {
     pub fn query<'conn>(
         &'conn self,
         statement: String,
-        parameters: Parameters
+        parameters: Parameters,
     ) -> BoxFuture<'conn, Result<RecordBatchStream<'conn>>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.command_tx.send(Command::Query { statement, parameters, tx }) {
@@ -194,7 +179,7 @@ impl Connection {
         }
         Box::pin(async move {
             match rx.await {
-                Ok(Ok(())) => { Ok(RecordBatchStream::new(self)) }
+                Ok(Ok(())) => Ok(RecordBatchStream::new(self)),
                 Ok(Err(e)) => Err(e),
                 Err(e) => Err(Box::new(e) as Error),
             }

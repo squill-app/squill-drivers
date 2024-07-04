@@ -1,5 +1,5 @@
-use crate::Result;
 use crate::parameters::Parameters;
+use crate::Result;
 use arrow_array::RecordBatch;
 
 pub trait DriverConnection {
@@ -24,7 +24,7 @@ pub trait DriverConnection {
     fn query<'c>(
         &'c self,
         statement: String,
-        parameters: Parameters
+        parameters: Parameters,
     ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>>;
 }
 
@@ -36,9 +36,9 @@ pub trait DriverFactory: Sync + Send {
 
 #[cfg(test)]
 mod tests {
-    use ctor::ctor;
-    use crate::factory::Factory;
     use super::*;
+    use crate::factory::Factory;
+    use ctor::ctor;
 
     struct MockDriverConnection {}
 
@@ -58,7 +58,7 @@ mod tests {
         fn query<'c>(
             &'c self,
             _statement: String,
-            _parameters: Parameters
+            _parameters: Parameters,
         ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>> {
             Ok(Box::new(std::iter::empty()))
         }

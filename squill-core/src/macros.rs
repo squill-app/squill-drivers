@@ -1,10 +1,10 @@
 #[macro_export]
 macro_rules! bind {
     () => {
-        &[] as &[&dyn squill_core::parameters::ToParameter]
+        &[] as &[&dyn squill_core::value::ToValue]
     };
     ($($param:expr),+ $(,)?) => {
-        $crate::parameters::Parameters::from_slice(&[$(&$param as &dyn $crate::parameters::ToParameter),+] as &[&dyn $crate::parameters::ToParameter])
+        $crate::parameters::Parameters::from_slice(&[$(&$param as &dyn $crate::values::ToValue),+] as &[&dyn $crate::values::ToValue])
     };
 }
 
@@ -12,7 +12,7 @@ macro_rules! bind {
 macro_rules! execute {
     ($obj:expr, $statement:expr $(, $rest:expr)*) => {
         {
-        let bind_parameters: Vec<$crate::parameters::Parameter> = vec![
+        let bind_parameters: Vec<$crate::values::Value> = vec![
             $(
                 $rest.into(),
             )*
@@ -26,7 +26,7 @@ macro_rules! execute {
 macro_rules! query {
     ($obj:expr, $statement:expr $(, $rest:expr)*) => {
         {
-        let bind_parameters: Vec<$crate::parameters::Parameter> = vec![
+        let bind_parameters: Vec<$crate::values::Value> = vec![
             $(
                 $rest.into(),
             )*
