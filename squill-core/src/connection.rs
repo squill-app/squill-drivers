@@ -1,4 +1,4 @@
-use crate::drivers::DriverConnection;
+use crate::driver::DriverConnection;
 use crate::factory::Factory;
 use crate::parameters::Parameters;
 use crate::Result;

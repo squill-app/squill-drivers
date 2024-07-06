@@ -10,6 +10,7 @@
 //!
 //! * [`squill-core`][squill_core] - the core traits and types
 //! * [`squill-duckdb`][squill_duckdb] - the [DuckDB](https://duckdb.org) driver
+//! * [`squill-sqlite`][squill_sqlite] - the [SQLite](https://www.sqlite.org) driver
 //! * [`squill-async`][squill_async] - asynchronous adapter for squill drivers
 
 pub use squill_core::connection::Connection;
@@ -31,4 +32,6 @@ pub mod futures {
 pub fn register_drivers() {
     #[cfg(feature = "duckdb")]
     squill_duckdb::register_driver();
+    #[cfg(feature = "sqlite")]
+    squill_sqlite::register_driver();
 }

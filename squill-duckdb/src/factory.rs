@@ -1,6 +1,6 @@
 use crate::DuckDB;
 use crate::IN_MEMORY_URI_PATH;
-use squill_core::drivers::{DriverConnection, DriverFactory};
+use squill_core::driver::{DriverConnection, DriverFactory};
 use squill_core::Result;
 
 pub(crate) struct DuckDBFactory {}

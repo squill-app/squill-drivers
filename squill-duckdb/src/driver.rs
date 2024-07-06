@@ -1,5 +1,5 @@
 use arrow_array::RecordBatch;
-use squill_core::drivers::DriverConnection;
+use squill_core::driver::DriverConnection;
 use squill_core::parameters::Parameters;
 use squill_core::Result;
 

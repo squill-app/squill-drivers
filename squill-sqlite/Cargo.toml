@@ -1,0 +1,21 @@
+[package]
+name = "squill-sqlite"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+rusqlite = { version = "0.31.0", features = ["bundled", "column_decltype", "series"] }
+squill-core = { workspace = true }
+url = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+
+[dev-dependencies]
+ctor = { workspace = true }
+tempfile = { workspace = true }
+path-slash = { workspace = true }

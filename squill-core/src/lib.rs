@@ -1,5 +1,5 @@
 pub mod connection;
-pub mod drivers;
+pub mod driver;
 pub mod factory;
 pub mod macros;
 pub mod parameters;
