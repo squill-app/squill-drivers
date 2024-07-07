@@ -8,24 +8,18 @@ pub trait DriverConnection {
      */
     fn driver_name(&self) -> &str;
 
+    fn prepare<'c>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 'c>>;
+
     /**
      * Close the connection.
      */
     fn close(self: Box<Self>) -> Result<()>;
+}
 
-    /**
-     * Execute a query and return the number of rows affected.
-     */
-    fn execute(&self, query: String, parameters: Parameters) -> Result<u64>;
-
-    /**
-     * Execute a query and return the result set.
-     */
-    fn query<'c>(
-        &'c self,
-        statement: String,
-        parameters: Parameters,
-    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>>;
+pub trait DriverStatement {
+    fn bind(&mut self, parameters: Parameters) -> Result<()>;
+    fn execute(&mut self) -> Result<u64>;
+    fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>>;
 }
 
 pub trait DriverFactory: Sync + Send {

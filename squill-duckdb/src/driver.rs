@@ -1,5 +1,5 @@
 use arrow_array::RecordBatch;
-use squill_core::driver::DriverConnection;
+use squill_core::driver::{DriverConnection, DriverStatement};
 use squill_core::parameters::Parameters;
 use squill_core::Result;
 
@@ -39,6 +39,10 @@ impl DriverConnection for DuckDB {
             Ok(_) => Ok(()),
             Err((_connection, e)) => Err(Box::new(e)),
         }
+    }
+
+    fn prepare<'c>(&'c self, _statement: &str) -> Result<Box<dyn DriverStatement + 'c>> {
+        todo!()
     }
 }
 

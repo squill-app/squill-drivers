@@ -49,7 +49,7 @@ impl Factory {
 
 #[cfg(test)]
 mod tests {
-    use crate::parameters::Parameters;
+    use crate::{driver::DriverStatement, parameters::Parameters};
 
     use super::*;
     use arrow_array::RecordBatch;
@@ -62,19 +62,27 @@ mod tests {
             "mock"
         }
 
+        fn prepare<'c>(&'c self, _statement: &str) -> Result<Box<dyn DriverStatement + 'c>> {
+            Ok(Box::new(MockDriverStatement {}))
+        }
+
         fn close(self: Box<Self>) -> Result<()> {
             Ok(())
         }
+    }
 
-        fn execute(&self, _query: String, _parameters: Parameters) -> Result<u64> {
+    struct MockDriverStatement {}
+
+    impl DriverStatement for MockDriverStatement {
+        fn bind(&mut self, _parameters: Parameters) -> Result<()> {
+            Ok(())
+        }
+
+        fn execute(&mut self) -> Result<u64> {
             Ok(0)
         }
 
-        fn query<'c>(
-            &'c self,
-            _statement: String,
-            _parameters: Parameters,
-        ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>> {
+        fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
             Ok(Box::new(std::iter::empty()))
         }
     }

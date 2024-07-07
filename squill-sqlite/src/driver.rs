@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
+use squill_core::driver::DriverStatement;
 use squill_core::Result;
 use squill_core::{driver::DriverConnection, parameters::Parameters};
 
+use crate::value::Adapter;
 use crate::{Sqlite, DRIVER_NAME};
 
 impl DriverConnection for Sqlite {
@@ -12,41 +14,75 @@ impl DriverConnection for Sqlite {
         DRIVER_NAME
     }
 
+    #[allow(unused_variables)]
     fn execute(&self, statement: String, parameters: Parameters) -> Result<u64> {
-        let mut prepared_statement = self.prepare_and_bind(statement, parameters)?;
-        match prepared_statement.raw_execute() {
-            Ok(affected_rows) => Ok(affected_rows as u64),
-            Err(e) => Err(Box::new(e)),
-        }
+        todo!()
     }
 
+    #[allow(unused_variables)]
     fn query<'c>(
         &'c self,
         statement: String,
         parameters: Parameters,
     ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>> {
-        let mut prepared_statement: rusqlite::Statement = self.prepare_and_bind(statement, parameters)?;
-        let rows: rusqlite::Rows = prepared_statement.raw_query();
-        // let query = SqliteQuery { statement: prepared_statement, rows };
-        // Ok(Box::new(query))
         todo!()
     }
 
     fn close(self: Box<Self>) -> Result<()> {
         Ok(())
     }
+
+    fn prepare<'c>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 'c>> {
+        Ok(Box::new(SqliteStatement { inner: self.conn.prepare(statement)? }))
+    }
 }
 
-struct SqliteQuery<'c> {
-    statement: rusqlite::Statement<'c>,
-    rows: rusqlite::Rows<'c>,
+struct SqliteStatement<'c> {
+    inner: rusqlite::Statement<'c>,
 }
 
-impl<'c> Iterator for SqliteQuery<'c> {
+impl DriverStatement for SqliteStatement<'_> {
+    fn bind(&mut self, parameters: Parameters) -> Result<()> {
+        let expected = self.inner.parameter_count();
+        match parameters {
+            Parameters::None => {
+                if expected > 0 {
+                    return Err(Box::new(rusqlite::Error::InvalidParameterCount(expected, 0)));
+                }
+                Ok(())
+            }
+            Parameters::Positional(values) => {
+                if expected != values.len() {
+                    return Err(Box::new(rusqlite::Error::InvalidParameterCount(expected, values.len())));
+                }
+                // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
+                // [`Statement::parameter_count`], inclusive.
+                for (index, value) in values.iter().enumerate() {
+                    self.inner.raw_bind_parameter(index + 1, Adapter(value))?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn execute(&mut self) -> Result<u64> {
+        Ok(self.inner.raw_execute()? as u64)
+    }
+
+    fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+        Ok(Box::new(SqliteRows { inner: self.inner.raw_query() }))
+    }
+}
+
+struct SqliteRows<'s> {
+    inner: rusqlite::Rows<'s>,
+}
+
+impl<'c> Iterator for SqliteRows<'c> {
     type Item = Result<arrow_array::RecordBatch>;
 
     fn next(&mut self) -> Option<Result<arrow_array::RecordBatch>> {
-        let rows = &mut self.rows;
+        let rows = &mut self.inner;
         let row = rows.next();
         match row {
             Ok(Some(row)) => {
