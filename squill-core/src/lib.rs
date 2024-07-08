@@ -6,6 +6,7 @@ pub mod factory;
 pub mod macros;
 pub mod parameters;
 pub mod rows;
+pub mod statement;
 pub mod values;
 
 /// The error type used across the library.

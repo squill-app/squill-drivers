@@ -1,25 +1,34 @@
 use arrow_array::RecordBatch;
 use futures::future::{err, BoxFuture};
+use squill_core::driver::DriverStatement;
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
 use squill_core::{Error, Result};
+use std::collections::HashMap;
 use std::thread;
 use tokio::sync::oneshot;
 use tracing::error;
 
+use crate::statement::Statement;
 use crate::RecordBatchStream;
 
+/// An handle to an object owned by the connection's thread.
+pub(crate) type Handle = u64;
+
 pub struct Connection {
-    command_tx: crossbeam_channel::Sender<Command>,
+    pub(crate) command_tx: crossbeam_channel::Sender<Command>,
 }
 
-enum Command {
+pub(crate) enum Command {
     Close { tx: oneshot::Sender<Result<()>> },
     Execute { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<u64>> },
+    ExecutePreparedStatement { handle: Handle, parameters: Parameters, tx: oneshot::Sender<Result<u64>> },
     Query { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<()>> },
     Fetch { tx: tokio::sync::mpsc::Sender<Result<Option<RecordBatch>>> },
+    Prepare { statement: String, tx: oneshot::Sender<Result<Handle>> },
 }
 
+#[macro_export]
 macro_rules! await_on {
     ($rx:expr) => {
         Box::pin(async move {
@@ -51,6 +60,65 @@ macro_rules! send_response {
 }
 
 impl Connection {
+    pub fn close(self) -> BoxFuture<'static, Result<()>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::Close { tx }) {
+            return Box::pin(err::<(), Error>(Box::new(e)));
+        }
+        await_on!(rx)
+    }
+
+    pub fn prepare<S: Into<String>>(&self, statement: S) -> BoxFuture<'_, Result<Statement<'_>>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::Prepare { statement: statement.into(), tx }) {
+            return Box::pin(err::<Statement<'_>, Error>(Box::new(e)));
+        }
+        Box::pin(async move {
+            match rx.await {
+                Ok(Ok(handle)) => {
+                    Ok(Statement { handle, command_tx: self.command_tx.clone(), phantom: std::marker::PhantomData })
+                }
+                Ok(Err(e)) => Err(e),
+                Err(e) => Err(Box::new(e) as Error),
+            }
+        })
+    }
+
+    pub fn execute(&self, statement: String, parameters: Parameters) -> BoxFuture<'static, Result<u64>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
+            return Box::pin(err::<u64, Error>(Box::new(e)));
+        }
+        await_on!(rx)
+    }
+
+    pub fn query<'conn>(
+        &'conn self,
+        statement: String,
+        parameters: Parameters,
+    ) -> BoxFuture<'conn, Result<RecordBatchStream<'conn>>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::Query { statement, parameters, tx }) {
+            return Box::pin(err::<RecordBatchStream<'conn>, Error>(Box::new(e)));
+        }
+        Box::pin(async move {
+            match rx.await {
+                Ok(Ok(())) => Ok(RecordBatchStream::new(self)),
+                Ok(Err(e)) => Err(e),
+                Err(e) => Err(Box::new(e) as Error),
+            }
+        })
+    }
+
+    pub(crate) fn fetch(&self, tx: tokio::sync::mpsc::Sender<Result<Option<arrow_array::RecordBatch>>>) -> Result<()> {
+        if let Err(e) = self.command_tx.send(Command::Fetch { tx }) {
+            return Err(Box::new(e) as Error);
+        }
+        Ok(())
+    }
+}
+
+impl Connection {
     pub fn open<T: Into<String>>(uri: T) -> BoxFuture<'static, Result<Self>> {
         let (command_tx, command_rx): (crossbeam_channel::Sender<Command>, crossbeam_channel::Receiver<Command>) =
             crossbeam_channel::bounded(1);
@@ -63,6 +131,8 @@ impl Connection {
                 let inner_conn_result = Factory::open(&uri);
                 match inner_conn_result {
                     Ok(inner_conn) => {
+                        let mut prepared_statements: HashMap<Handle, Box<dyn DriverStatement>> = HashMap::new();
+                        let mut next_handle: Handle = 1;
                         let mut last_query_rows_iterator: Option<Box<dyn Iterator<Item = Result<RecordBatch>>>> = None;
                         if open_tx.send(Ok(Self { command_tx })).is_err() {
                             error!("Channel communication failed.");
@@ -77,6 +147,7 @@ impl Connection {
                                         // Because the last query rows iterator is borrowing the connection, we need to
                                         // drop it before closing the connection.
                                         drop(last_query_rows_iterator);
+                                        drop(prepared_statements);
                                         let result = inner_conn.close();
                                         // We don't care if the receiver is closed, because we are closing the
                                         // connection anyway.
@@ -84,11 +155,50 @@ impl Connection {
                                         // Once the connection is closed, we need to break the loop and exit the thread.
                                         break;
                                     }
+
+                                    // Prepare and execute a statement at once.
+                                    //
+                                    // This is a convenience method that prepares a statement, binds the parameters, and
+                                    // executes it in one go. The response sent back to the caller is the number of rows
+                                    // affected by the statement.
+                                    // Using this command is more efficient than preparing and then executing the
+                                    // prepared statement because it avoids the overhead of sending back the handle to
+                                    // the prepared statement and then run a second command to execute it.
                                     Ok(Command::Execute { statement, parameters, tx }) => {
-                                        let result = inner_conn.execute(statement, parameters);
-                                        send_response!(tx, result);
+                                        match inner_conn.prepare(&statement) {
+                                            Ok(mut stmt) => match stmt.bind(parameters) {
+                                                Ok(_) => {
+                                                    send_response!(tx, stmt.execute());
+                                                }
+                                                Err(e) => {
+                                                    send_response!(tx, Err(e));
+                                                }
+                                            },
+                                            Err(e) => {
+                                                send_response!(tx, Err(e));
+                                            }
+                                        }
                                     }
+
+                                    // Execute a prepared statement.
+                                    Ok(Command::ExecutePreparedStatement { handle, parameters, tx }) => {
+                                        if let Some(stmt) = prepared_statements.get_mut(&handle) {
+                                            match stmt.bind(parameters) {
+                                                Ok(_) => {
+                                                    send_response!(tx, stmt.execute());
+                                                }
+                                                Err(e) => {
+                                                    send_response!(tx, Err(e));
+                                                }
+                                            }
+                                        } else {
+                                            send_response!(tx, Err("Invalid statement handle".into()));
+                                        }
+                                    }
+
                                     Ok(Command::Query { statement, parameters, tx }) => {
+                                        todo!("Implement query command")
+                                        /*
                                         let result = inner_conn.query(statement, parameters);
                                         match result {
                                             Ok(rows) => {
@@ -99,7 +209,28 @@ impl Connection {
                                                 send_response!(tx, Err(e));
                                             }
                                         }
+                                        */
                                     }
+
+                                    // Prepare a statement.
+                                    //
+                                    // The statement is prepared and stored in the `prepared_statements` map. The
+                                    // response sent back to the caller is the handle to the prepared statement.
+                                    // The handle is used to identify the prepared statement when executing or dropping
+                                    // it.
+                                    // If the response channel is closed, the loop is broken and the thread exits so
+                                    // there is no need to check the result of the send operation and no risk of
+                                    // leaking statements.
+                                    Ok(Command::Prepare { statement, tx }) => match inner_conn.prepare(&statement) {
+                                        Ok(stmt) => {
+                                            prepared_statements.insert(next_handle, stmt);
+                                            send_response!(tx, Ok(next_handle));
+                                            next_handle += 1;
+                                        }
+                                        Err(e) => {
+                                            send_response!(tx, Err(e));
+                                        }
+                                    },
                                     Ok(Command::Fetch { tx }) => {
                                         if let Some(rows) = last_query_rows_iterator.as_mut() {
                                             match rows.next() {
@@ -151,45 +282,15 @@ impl Connection {
             })
         }
     }
+}
 
-    pub fn close(self) -> BoxFuture<'static, Result<()>> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Close { tx }) {
-            return Box::pin(err::<(), Error>(Box::new(e)));
-        }
-        await_on!(rx)
-    }
+#[cfg(test)]
+mod tests {
+    use crate::Connection;
 
-    pub fn execute(&self, statement: String, parameters: Parameters) -> BoxFuture<'static, Result<u64>> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
-            return Box::pin(err::<u64, Error>(Box::new(e)));
-        }
-        await_on!(rx)
-    }
-
-    pub fn query<'conn>(
-        &'conn self,
-        statement: String,
-        parameters: Parameters,
-    ) -> BoxFuture<'conn, Result<RecordBatchStream<'conn>>> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Query { statement, parameters, tx }) {
-            return Box::pin(err::<RecordBatchStream<'conn>, Error>(Box::new(e)));
-        }
-        Box::pin(async move {
-            match rx.await {
-                Ok(Ok(())) => Ok(RecordBatchStream::new(self)),
-                Ok(Err(e)) => Err(e),
-                Err(e) => Err(Box::new(e) as Error),
-            }
-        })
-    }
-
-    pub(crate) fn fetch(&self, tx: tokio::sync::mpsc::Sender<Result<Option<arrow_array::RecordBatch>>>) -> Result<()> {
-        if let Err(e) = self.command_tx.send(Command::Fetch { tx }) {
-            return Err(Box::new(e) as Error);
-        }
-        Ok(())
+    #[tokio::test]
+    async fn test_open() {
+        // Opening a connection with an unknown scheme should fail
+        assert!(Connection::open("unknown://").await.is_err());
     }
 }

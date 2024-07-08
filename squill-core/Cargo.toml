@@ -16,6 +16,8 @@ lazy_static = { workspace = true }
 chrono = { workspace = true }
 rust_decimal = { workspace = true }
 uuid = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 ctor = { workspace = true }
+mockall = { workspace = true }

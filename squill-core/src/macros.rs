@@ -21,7 +21,7 @@ macro_rules! execute {
 }
 
 #[macro_export]
-macro_rules! query {
+macro_rules! query_arrow {
     ($statement:expr $(, $rest:expr)*) => {{
         let bind_parameters: Vec<$crate::values::Value> = vec![
             $(
@@ -35,7 +35,7 @@ macro_rules! query {
 #[cfg(test)]
 mod tests {
     use crate::{connection::Connection, parameters::Parameters, values::Value};
-    use crate::{execute, params, query};
+    use crate::{execute, params, query_arrow};
 
     #[test]
     fn test_params() {
@@ -54,6 +54,11 @@ mod tests {
 
     #[test]
     fn test_execute() {
+        let mut mock_connection = MockConnection::new();
+        mock_factory.expect_schemes().returning(|| &["mock_macro_execute"]);
+        mock_factory.expect_open().returning(|_| Ok(Box::new(MockDriverConnection::new())));
+        Factory::register(Box::new(mock_factory));
+
         let conn = Connection::open("mock://").unwrap();
         let _ = execute!(conn, "CREATE TABLE table (id INTEGER PRIMARY KEY, name TEXT)");
         let _ = execute!(conn, "INSERT INTO table (id, name) VALUES (?, ?)", 1, "hello world");
@@ -64,9 +69,9 @@ mod tests {
     fn test_query() {
         let conn = Connection::open("mock://").unwrap();
         let mut stmt = conn.prepare("SELECT * FROM table").unwrap();
-        let _ = query!(stmt);
+        let _ = query_arrow!(stmt);
 
-        //        let _ = query!(1, "SELECT * FROM table");
-        //        let _ = query!(1, "SELECT * FROM table", 1, 2, 3);
+        //        let _ = query_arrow!(1, "SELECT * FROM table");
+        //        let _ = query_arrow!(1, "SELECT * FROM table", 1, 2, 3);
     }
 }

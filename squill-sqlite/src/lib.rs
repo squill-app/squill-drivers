@@ -2,6 +2,7 @@ use squill_core::factory::Factory;
 
 mod driver;
 mod factory;
+mod statement;
 mod value;
 
 /// The name of the driver for SQLite.

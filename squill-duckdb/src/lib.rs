@@ -1,11 +1,9 @@
 #![doc = include_str!("../README.md")]
-use crate::values::Adapter;
 use squill_core::factory::Factory;
-use squill_core::parameters::Parameters;
-use squill_core::Result;
 
 mod driver;
 mod factory;
+mod statement;
 mod values;
 
 /// The name of the driver for DuckDB.
@@ -25,32 +23,6 @@ pub const IN_MEMORY_URI: &str = "duckdb:///:memory:";
 
 pub(crate) struct DuckDB {
     conn: duckdb::Connection,
-}
-
-impl DuckDB {
-    fn prepare_and_bind(&self, statement: String, parameters: Parameters) -> Result<duckdb::Statement> {
-        let mut stmt = self.conn.prepare(&statement)?;
-        let expected = stmt.parameter_count();
-        match parameters {
-            Parameters::None => {
-                if expected > 0 {
-                    return Err(Box::new(duckdb::Error::InvalidParameterCount(expected, 0)));
-                }
-                Ok(stmt)
-            }
-            Parameters::Positional(values) => {
-                if expected != values.len() {
-                    return Err(Box::new(duckdb::Error::InvalidParameterCount(expected, values.len())));
-                }
-                // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
-                // [`Statement::parameter_count`], inclusive.
-                for (index, value) in values.iter().enumerate() {
-                    stmt.raw_bind_parameter(index + 1, Adapter(value))?;
-                }
-                Ok(stmt)
-            }
-        }
-    }
 }
 
 pub fn register_driver() {

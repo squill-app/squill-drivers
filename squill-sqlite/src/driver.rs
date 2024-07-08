@@ -1,12 +1,8 @@
-use std::sync::Arc;
-
-use arrow_array::RecordBatch;
-use arrow_schema::Schema;
+use squill_core::driver::DriverConnection;
 use squill_core::driver::DriverStatement;
 use squill_core::Result;
-use squill_core::{driver::DriverConnection, parameters::Parameters};
 
-use crate::value::Adapter;
+use crate::statement::SqliteStatement;
 use crate::{Sqlite, DRIVER_NAME};
 
 impl DriverConnection for Sqlite {
@@ -14,85 +10,12 @@ impl DriverConnection for Sqlite {
         DRIVER_NAME
     }
 
-    #[allow(unused_variables)]
-    fn execute(&self, statement: String, parameters: Parameters) -> Result<u64> {
-        todo!()
-    }
-
-    #[allow(unused_variables)]
-    fn query<'c>(
-        &'c self,
-        statement: String,
-        parameters: Parameters,
-    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'c>> {
-        todo!()
-    }
-
     fn close(self: Box<Self>) -> Result<()> {
         Ok(())
     }
 
-    fn prepare<'c>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 'c>> {
+    fn prepare<'c: 's, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
         Ok(Box::new(SqliteStatement { inner: self.conn.prepare(statement)? }))
-    }
-}
-
-struct SqliteStatement<'c> {
-    inner: rusqlite::Statement<'c>,
-}
-
-impl DriverStatement for SqliteStatement<'_> {
-    fn bind(&mut self, parameters: Parameters) -> Result<()> {
-        let expected = self.inner.parameter_count();
-        match parameters {
-            Parameters::None => {
-                if expected > 0 {
-                    return Err(Box::new(rusqlite::Error::InvalidParameterCount(expected, 0)));
-                }
-                Ok(())
-            }
-            Parameters::Positional(values) => {
-                if expected != values.len() {
-                    return Err(Box::new(rusqlite::Error::InvalidParameterCount(expected, values.len())));
-                }
-                // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
-                // [`Statement::parameter_count`], inclusive.
-                for (index, value) in values.iter().enumerate() {
-                    self.inner.raw_bind_parameter(index + 1, Adapter(value))?;
-                }
-                Ok(())
-            }
-        }
-    }
-
-    fn execute(&mut self) -> Result<u64> {
-        Ok(self.inner.raw_execute()? as u64)
-    }
-
-    fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
-        Ok(Box::new(SqliteRows { inner: self.inner.raw_query() }))
-    }
-}
-
-struct SqliteRows<'s> {
-    inner: rusqlite::Rows<'s>,
-}
-
-impl<'c> Iterator for SqliteRows<'c> {
-    type Item = Result<arrow_array::RecordBatch>;
-
-    fn next(&mut self) -> Option<Result<arrow_array::RecordBatch>> {
-        let rows = &mut self.inner;
-        let row = rows.next();
-        match row {
-            Ok(Some(row)) => {
-                println!("{:?}", row);
-                let schema = Arc::new(Schema::empty());
-                Some(Ok(RecordBatch::new_empty(schema)))
-            }
-            Ok(None) => None,
-            Err(e) => Some(Err(Box::new(e))),
-        }
     }
 }
 
@@ -100,7 +23,7 @@ impl<'c> Iterator for SqliteRows<'c> {
 mod tests {
     use ctor::ctor;
     use path_slash::PathExt;
-    use squill_core::{connection::Connection, execute, query};
+    use squill_core::{connection::Connection, execute, query_arrow};
 
     use crate::IN_MEMORY_URI;
 
@@ -116,8 +39,11 @@ mod tests {
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (1, NULL)").unwrap(), 1);
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (?, ?)", 2, "Bob").unwrap(), 1);
 
-        let mut rows = query!(conn, "SELECT * FROM test").unwrap();
-        let _ = rows.next();
+        let mut stmt = conn.prepare("SELECT * FROM test").unwrap();
+        let mut rows = query_arrow!(stmt).unwrap();
+        assert!(rows.next().is_some());
+        assert!(rows.next().is_some());
+        assert!(rows.next().is_none());
     }
 
     #[test]
@@ -145,6 +71,7 @@ mod tests {
         let conn = Connection::open(IN_MEMORY_URI).unwrap();
         assert_eq!(execute!(conn, "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)").unwrap(), 0);
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (1, 'Alice')").unwrap(), 1);
+        assert!(execute!(conn, "INSERT INTO test (id, name) VALUES (1, 'Alice')").is_err());
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (?, ?)", 2, "Bob").unwrap(), 1);
 
         conn.close().unwrap();

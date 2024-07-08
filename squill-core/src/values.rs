@@ -176,6 +176,11 @@ impl_from_for_value!(Vec<u8>, Blob);
 impl_from_for_value!(Decimal, Decimal);
 impl_from_for_value!(uuid::Uuid, String);
 
+/// Display implementation for Value.
+///
+/// This is also use to cast a Value into a string when a driver would not support the Value type. For instance DuckDB
+/// RUST crate does not provide a way to bind a `Value::Decimal` but binding a string representation of a decimal is
+/// working.
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
