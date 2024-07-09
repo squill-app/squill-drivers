@@ -9,7 +9,7 @@ In a nutshell, here are the main features provided by this crate:
 - **Connections are created via a factory:**
 
   ```rust
-  let conn = Factory::open("duckdb://:memory:")?;
+  let conn = Connection::open("duckdb://:memory:")?;
   ```
 
   The factory returns a `Box<dyn DriverConnection>` which then can be used to access the database with the same

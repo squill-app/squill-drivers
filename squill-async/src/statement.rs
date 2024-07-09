@@ -29,3 +29,9 @@ impl Statement<'_> {
         todo!("Implement query method")
     }
 }
+
+impl Drop for Statement<'_> {
+    fn drop(&mut self) {
+        let _ = self.command_tx.send(Command::DropStatement { handle: self.handle });
+    }
+}

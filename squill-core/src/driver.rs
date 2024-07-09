@@ -22,6 +22,7 @@ pub trait DriverConnection {
     fn close(self: Box<Self>) -> Result<()>;
 }
 
+#[cfg_attr(test, automock)]
 pub trait DriverStatement {
     fn bind(&mut self, parameters: Parameters) -> Result<()>;
     fn execute(&mut self) -> Result<u64>;

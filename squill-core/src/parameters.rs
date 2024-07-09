@@ -1,5 +1,6 @@
 use crate::values::{ToValue, Value};
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum Parameters {
     None,
     Positional(Vec<Value>),
@@ -20,6 +21,13 @@ impl Parameters {
         match self {
             Parameters::None => true,
             Parameters::Positional(values) => values.is_empty(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Parameters::None => 0,
+            Parameters::Positional(values) => values.len(),
         }
     }
 

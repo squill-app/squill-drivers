@@ -21,11 +21,12 @@ pub struct Connection {
 
 pub(crate) enum Command {
     Close { tx: oneshot::Sender<Result<()>> },
+    DropStatement { handle: Handle },
     Execute { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<u64>> },
     ExecutePreparedStatement { handle: Handle, parameters: Parameters, tx: oneshot::Sender<Result<u64>> },
-    Query { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<()>> },
     Fetch { tx: tokio::sync::mpsc::Sender<Result<Option<RecordBatch>>> },
-    Prepare { statement: String, tx: oneshot::Sender<Result<Handle>> },
+    PrepareStatement { statement: String, tx: oneshot::Sender<Result<Handle>> },
+    Query { statement: String, parameters: Parameters, tx: oneshot::Sender<Result<()>> },
 }
 
 #[macro_export]
@@ -70,7 +71,7 @@ impl Connection {
 
     pub fn prepare<S: Into<String>>(&self, statement: S) -> BoxFuture<'_, Result<Statement<'_>>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Prepare { statement: statement.into(), tx }) {
+        if let Err(e) = self.command_tx.send(Command::PrepareStatement { statement: statement.into(), tx }) {
             return Box::pin(err::<Statement<'_>, Error>(Box::new(e)));
         }
         Box::pin(async move {
@@ -140,9 +141,9 @@ impl Connection {
                             loop {
                                 let command = command_rx.recv();
                                 match command {
-                                    /*
-                                     * Close the connection.
-                                     */
+                                    //
+                                    // Close the connection.
+                                    //
                                     Ok(Command::Close { tx }) => {
                                         // Because the last query rows iterator is borrowing the connection, we need to
                                         // drop it before closing the connection.
@@ -154,6 +155,15 @@ impl Connection {
                                         send_response!(tx, result);
                                         // Once the connection is closed, we need to break the loop and exit the thread.
                                         break;
+                                    }
+
+                                    //
+                                    // Drop a prepared statement.
+                                    //
+                                    // The prepared statement is removed from the `prepared_statements` map. The caller
+                                    // is not expecting any response.
+                                    Ok(Command::DropStatement { handle }) => {
+                                        prepared_statements.remove(&handle);
                                     }
 
                                     // Prepare and execute a statement at once.
@@ -221,16 +231,18 @@ impl Connection {
                                     // If the response channel is closed, the loop is broken and the thread exits so
                                     // there is no need to check the result of the send operation and no risk of
                                     // leaking statements.
-                                    Ok(Command::Prepare { statement, tx }) => match inner_conn.prepare(&statement) {
-                                        Ok(stmt) => {
-                                            prepared_statements.insert(next_handle, stmt);
-                                            send_response!(tx, Ok(next_handle));
-                                            next_handle += 1;
+                                    Ok(Command::PrepareStatement { statement, tx }) => {
+                                        match inner_conn.prepare(&statement) {
+                                            Ok(stmt) => {
+                                                prepared_statements.insert(next_handle, stmt);
+                                                send_response!(tx, Ok(next_handle));
+                                                next_handle += 1;
+                                            }
+                                            Err(e) => {
+                                                send_response!(tx, Err(e));
+                                            }
                                         }
-                                        Err(e) => {
-                                            send_response!(tx, Err(e));
-                                        }
-                                    },
+                                    }
                                     Ok(Command::Fetch { tx }) => {
                                         if let Some(rows) = last_query_rows_iterator.as_mut() {
                                             match rows.next() {

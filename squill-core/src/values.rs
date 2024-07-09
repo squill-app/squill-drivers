@@ -6,7 +6,7 @@ use std::fmt;
 // Same as `chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap().num_days_from_ce()` but faster...
 const UNIX_EPOCH_NUM_DAYS_FROM_CE: i32 = 719163;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TimeUnit {
     Second,
     Millisecond,
@@ -26,7 +26,7 @@ impl TimeUnit {
 }
 
 // See {@link https://arrow.apache.org/docs/python/api/datatypes.html}
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Null,
     Bool(bool),

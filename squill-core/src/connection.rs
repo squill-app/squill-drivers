@@ -5,9 +5,6 @@ use crate::statement::{IntoStatement, Statement};
 use crate::Result;
 use arrow_array::RecordBatch;
 
-#[cfg(test)]
-use mockall::automock;
-
 pub struct Connection {
     inner: Box<dyn DriverConnection>,
 }
@@ -67,11 +64,24 @@ impl Connection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::driver::{MockDriverConnection, MockDriverFactory};
 
     #[test]
     fn test_connection() {
-        let conn = Connection::open("mock://").unwrap();
+        let mut mock_factory = MockDriverFactory::new();
+        mock_factory.expect_schemes().returning(|| &["mock-connection-open"]);
+        mock_factory.expect_open().returning(|_| {
+            let mut mock_conn = MockDriverConnection::new();
+            mock_conn.expect_driver_name().return_const("mock".to_string());
+            mock_conn.expect_close().returning(|| Ok(()));
+            Ok(Box::new(mock_conn))
+        });
+        Factory::register(Box::new(mock_factory));
+
+        let conn = Connection::open("mock-connection-open://").unwrap();
         assert_eq!(conn.driver_name(), "mock");
         assert!(conn.close().is_ok());
+
+        Factory::unregister("mock-connection-open");
     }
 }

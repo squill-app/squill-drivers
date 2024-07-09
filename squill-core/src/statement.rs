@@ -57,16 +57,64 @@ impl<'s> IntoStatement<'s> for Statement<'s> {
 
 #[cfg(test)]
 mod tests {
-    use crate::connection::Connection;
+    use std::{
+        cell::RefCell,
+        sync::{Arc, Mutex},
+    };
+
+    use crate::{
+        connection::Connection,
+        driver::{MockDriverConnection, MockDriverFactory, MockDriverStatement},
+        factory::Factory,
+        params, Result,
+    };
 
     #[test]
     fn test_statement() {
-        let conn = Connection::open("mock://").unwrap();
+        #[derive(Default)]
+        struct State {
+            statement: String,
+            bind_parameters: usize,
+        }
+
+        let state: Arc<Mutex<RefCell<State>>> = Arc::new(Mutex::new(RefCell::new(State::default())));
+        let open_state = state.clone();
+
+        let mut mock_factory = MockDriverFactory::new();
+        mock_factory.expect_schemes().returning(|| &["mock-core-statement"]);
+        mock_factory.expect_open().returning(move |_| {
+            let prepare_state = open_state.clone();
+            let mut mock_conn = MockDriverConnection::new();
+            mock_conn.expect_prepare().returning(move |statement| {
+                let bind_state = prepare_state.clone();
+                prepare_state.lock().unwrap().borrow_mut().statement = statement.to_string();
+                let mut mock_stmt = MockDriverStatement::new();
+                mock_stmt.expect_bind().returning(move |parameters| {
+                    bind_state.lock().unwrap().borrow_mut().bind_parameters = parameters.len();
+                    Ok(())
+                });
+                mock_stmt.expect_execute().returning(|| Ok(0));
+                mock_stmt.expect_query().returning(|| {
+                    Ok(Box::new(std::iter::empty()) as Box<dyn Iterator<Item = Result<arrow_array::RecordBatch>>>)
+                });
+                Ok(Box::new(mock_stmt))
+            });
+            Ok(Box::new(mock_conn))
+        });
+        Factory::register(Box::new(mock_factory));
+
+        let conn = Connection::open("mock-core-statement://").unwrap();
         let mut stmt = conn.prepare("CREATE TABLE test(id INT)").unwrap();
+        assert_eq!(state.lock().unwrap().borrow().statement, "CREATE TABLE test(id INT)");
         assert!(stmt.execute().is_ok());
 
-        let mut stmt = conn.prepare("SELECT * FROM employee").unwrap();
+        let mut stmt = conn.prepare("SELECT * FROM employee WHERE id=? AND name=?").unwrap();
+        assert_eq!(state.lock().unwrap().borrow().statement, "SELECT * FROM employee WHERE id=? AND name=?");
+        assert!(stmt.bind(params!(1, "Alice")).is_ok());
+        assert_eq!(state.lock().unwrap().borrow().bind_parameters, 2);
         let mut rows = stmt.query().unwrap();
         assert!(rows.next().is_none());
+
+        Factory::unregister("mock-core-statement");
     }
 }

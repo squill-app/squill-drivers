@@ -34,8 +34,13 @@ macro_rules! query_arrow {
 
 #[cfg(test)]
 mod tests {
+    use crate::driver::{MockDriverConnection, MockDriverFactory, MockDriverStatement};
+    use crate::factory::Factory;
+    use crate::Result;
     use crate::{connection::Connection, parameters::Parameters, values::Value};
     use crate::{execute, params, query_arrow};
+    use std::cell::RefCell;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn test_params() {
@@ -54,24 +59,39 @@ mod tests {
 
     #[test]
     fn test_execute() {
-        let mut mock_connection = MockConnection::new();
-        mock_factory.expect_schemes().returning(|| &["mock_macro_execute"]);
-        mock_factory.expect_open().returning(|_| Ok(Box::new(MockDriverConnection::new())));
+        let mut mock_factory = MockDriverFactory::new();
+        mock_factory.expect_schemes().returning(|| &["mock-core-macros"]);
+        mock_factory.expect_open().returning(|_| {
+            let mut mock_conn = MockDriverConnection::new();
+            mock_conn.expect_prepare().returning(|_| {
+                let state: Arc<Mutex<RefCell<usize>>> = Arc::new(Mutex::new(RefCell::new(0)));
+                let mut mock_stmt = MockDriverStatement::new();
+                let bind_state = state.clone();
+                let execute_state = state.clone();
+                mock_stmt.expect_bind().returning(move |parameters| {
+                    *bind_state.lock().unwrap().borrow_mut() = parameters.len();
+                    Ok(())
+                });
+                mock_stmt.expect_execute().returning(move || Ok(*execute_state.lock().unwrap().borrow() as u64));
+                mock_stmt.expect_query().returning(|| {
+                    Ok(Box::new(std::iter::empty()) as Box<dyn Iterator<Item = Result<arrow_array::RecordBatch>>>)
+                });
+                Ok(Box::new(mock_stmt))
+            });
+            Ok(Box::new(mock_conn))
+        });
         Factory::register(Box::new(mock_factory));
 
-        let conn = Connection::open("mock://").unwrap();
-        let _ = execute!(conn, "CREATE TABLE table (id INTEGER PRIMARY KEY, name TEXT)");
-        let _ = execute!(conn, "INSERT INTO table (id, name) VALUES (?, ?)", 1, "hello world");
-        let _ = execute!(conn, "INSERT INTO table (id, name) VALUES (2, 'goodbye world')");
-    }
+        let conn = Connection::open("mock-core-macros://").unwrap();
 
-    #[test]
-    fn test_query() {
-        let conn = Connection::open("mock://").unwrap();
+        // execute! macro should bind the parameters and execute the statement
+        assert_eq!(execute!(conn, "CREATE TABLE table (id INTEGER PRIMARY KEY, name TEXT)").unwrap(), 0);
+        assert_eq!(execute!(conn, "INSERT INTO table (id, name) VALUES (?, ?)", 1, "hello world").unwrap(), 2);
+
+        // query_arrow! macro should bind the parameters and query the statement
         let mut stmt = conn.prepare("SELECT * FROM table").unwrap();
-        let _ = query_arrow!(stmt);
+        assert!(query_arrow!(stmt, 1, "hello world").is_ok());
 
-        //        let _ = query_arrow!(1, "SELECT * FROM table");
-        //        let _ = query_arrow!(1, "SELECT * FROM table", 1, 2, 3);
+        Factory::unregister("mock-core-macros");
     }
 }
