@@ -13,11 +13,14 @@ jobs:
       fail-fast: false
       matrix:
         platform:
+          - linux-x64
           - macos-arm64
           - macos-x64
           - windows-x64
 
         include:
+          - platform: linux-x64
+            os: ubuntu-24.04
           - platform: macos-arm64
             os: macos-14
           - platform: macos-x64
