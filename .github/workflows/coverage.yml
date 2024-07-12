@@ -1,0 +1,59 @@
+name: Quick checks
+on: [push, pull_request]
+env:
+  CARGO_TERM_COLOR: always
+  LLVM_PROFILE_FILE: rsql-%p-%m.profraw
+  RUST_BACKTRACE: 1
+  RUST_LOG: "info"
+  RUST_LOG_SPAN_EVENTS: full
+  RUSTFLAGS: -Cinstrument-coverage
+  RUSTDOCFLAGS: -Cinstrument-coverage
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update and install dependencies
+        run: sudo apt update && sudo apt install curl build-essential -y
+
+  test:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+         components: 'llvm-tools-preview'
+
+      - name: Install grcov
+        uses: taiki-e/install-action@main
+        with:
+          tool: grcov
+
+      - name: Running tests
+        run: |
+          cargo test --workspace --features mock
+
+      - name: Generate coverage reports
+        run: |
+          grcov $(find . -name "rsql-*.profraw" -print) \
+            -s . \
+            --branch \
+            --ignore-not-existing \
+            --ignore='target/*' \
+            --ignore='benches/*' \
+            --ignore='/*' \
+            --binary-path ./target/debug/ \
+            --excl-line='#\[derive' \
+            -t lcov \
+            -o lcov.info
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
