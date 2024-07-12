@@ -11,15 +11,8 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Update and install dependencies
-        run: sudo apt update && sudo apt install curl build-essential -y
-
-  test:
+  codecov:
     runs-on: ubuntu-24.04
-    needs: setup
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
