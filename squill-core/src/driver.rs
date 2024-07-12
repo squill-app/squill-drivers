@@ -5,7 +5,6 @@ use arrow_array::RecordBatch;
 use ctor::ctor;
 #[cfg(any(test, feature = "mock"))]
 use mockall::automock;
-use regex::Regex;
 
 /// The error type that the drivers will use to return errors.
 ///
@@ -145,7 +144,7 @@ impl MockDriverStatement {
             true => Err("Invalid statement".into()),
         });
         mock_statement.expect_query().returning(move || {
-            match Regex::new(r"^SELECT\s+([0-9]+)").unwrap().captures(query_stmt.as_str()) {
+            match regex::Regex::new(r"^SELECT\s+([0-9]+)").unwrap().captures(query_stmt.as_str()) {
                 Some(captures) => {
                     let count = captures.get(1).unwrap().as_str().parse::<u64>().unwrap();
                     if count == 0 {
