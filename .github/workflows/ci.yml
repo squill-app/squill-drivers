@@ -1,0 +1,38 @@
+name: CI
+on: [push, pull_request]
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: "info"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    needs: [ checks ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-arm64
+          - macos-x64
+          - windows-x64
+
+        include:
+          - platform: macos-arm64
+            os: macos-14
+          - platform: macos-x64
+            os: macos-13
+          - platform: windows-x64
+            os: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Running tests
+        run: |
+          cargo test --workspace --features mock
