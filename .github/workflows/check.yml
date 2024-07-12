@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Update and install dependencies
-        run: sudo apt update && apt install curl build-essential -y
+        run: sudo apt update && sudo apt install curl build-essential -y
 
   check:
     runs-on: ubuntu-latest
