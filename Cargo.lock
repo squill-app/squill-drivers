@@ -1805,6 +1805,7 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "crossbeam-channel",
+ "either",
  "futures",
  "squill-core",
  "tokio",

@@ -1,7 +1,7 @@
 use arrow_array::RecordBatch;
-use squill_core::driver::DriverStatement;
+use squill_core::driver::{DriverStatement, Result};
 use squill_core::parameters::Parameters;
-use squill_core::Result;
+use squill_core::Error;
 use std::{cell::RefCell, rc::Rc};
 
 #[derive(Clone)]
@@ -16,13 +16,13 @@ impl DriverStatement for DuckDBStatement<'_> {
         match parameters {
             Parameters::None => {
                 if expected > 0 {
-                    return Err(Box::new(duckdb::Error::InvalidParameterCount(expected, 0)));
+                    return Err(Error::InvalidParameterCount { expected, actual: 0 }.into());
                 }
                 Ok(())
             }
             Parameters::Positional(values) => {
                 if expected != values.len() {
-                    return Err(Box::new(duckdb::Error::InvalidParameterCount(expected, values.len())));
+                    return Err(Error::InvalidParameterCount { expected, actual: values.len() }.into());
                 }
                 // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
                 // [`Statement::parameter_count`], inclusive.
@@ -37,14 +37,14 @@ impl DriverStatement for DuckDBStatement<'_> {
     fn execute(&mut self) -> Result<u64> {
         match self.inner.borrow_mut().raw_execute() {
             Ok(affected_rows) => Ok(affected_rows as u64),
-            Err(e) => Err(Box::new(e)),
+            Err(error) => Err(error.into()),
         }
     }
 
     fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
         match self.inner.borrow_mut().raw_execute() {
             Ok(_affected_rows) => Ok(Box::new(self.clone())),
-            Err(e) => Err(Box::new(e)),
+            Err(error) => Err(error.into()),
         }
     }
 }

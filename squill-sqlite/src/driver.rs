@@ -1,6 +1,6 @@
 use squill_core::driver::DriverConnection;
 use squill_core::driver::DriverStatement;
-use squill_core::Result;
+use squill_core::driver::Result;
 
 use crate::statement::SqliteStatement;
 use crate::{Sqlite, DRIVER_NAME};

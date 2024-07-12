@@ -2,8 +2,9 @@ use crate::value::Adapter;
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 use squill_core::driver::DriverStatement;
+use squill_core::driver::Result;
 use squill_core::parameters::Parameters;
-use squill_core::Result;
+use squill_core::Error;
 use std::sync::Arc;
 
 pub(crate) struct SqliteStatement<'c> {
@@ -16,13 +17,13 @@ impl DriverStatement for SqliteStatement<'_> {
         match parameters {
             Parameters::None => {
                 if expected > 0 {
-                    return Err(Box::new(rusqlite::Error::InvalidParameterCount(expected, 0)));
+                    return Err(Error::InvalidParameterCount { expected, actual: 0 }.into());
                 }
                 Ok(())
             }
             Parameters::Positional(values) => {
                 if expected != values.len() {
-                    return Err(Box::new(rusqlite::Error::InvalidParameterCount(expected, values.len())));
+                    return Err(Error::InvalidParameterCount { expected, actual: values.len() }.into());
                 }
                 // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
                 // [`Statement::parameter_count`], inclusive.
@@ -60,7 +61,7 @@ impl<'c> Iterator for SqliteRows<'c> {
                 Some(Ok(RecordBatch::new_empty(schema)))
             }
             Ok(None) => None,
-            Err(e) => Some(Err(Box::new(e))),
+            Err(error) => Some(Err(error.into())),
         }
     }
 }

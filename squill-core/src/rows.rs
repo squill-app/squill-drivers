@@ -149,40 +149,19 @@ impl<'i> Iterator for Rows<'i> {
 
 #[cfg(test)]
 mod tests {
+    use crate::{connection::Connection, NO_PARAM};
+
     use super::*;
     use arrow_array::RecordBatch;
-    use std::{error::Error, sync::Arc};
 
     #[test]
-    fn test_iterator_for_rows() {
-        let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
-            "col0",
-            arrow_schema::DataType::Int32,
-            true,
-        )]));
-        let batch_records = vec![
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(arrow_array::Int32Array::from(vec![1, 2]))]),
-            RecordBatch::try_new(schema.clone(), vec![Arc::new(arrow_array::Int32Array::from(vec![Some(3), None]))]),
-        ];
-
-        let boxed_iterator: Box<dyn Iterator<Item = Result<RecordBatch>>> =
-            Box::new(batch_records.into_iter().map(|result| {
-                result.map_err(|arrow_error| {
-                    // Convert `arrow_error` into the appropriate error type expected by
-                    // `Result<RecordBatch, Box<dyn Error + Send + Sync>>`
-                    Box::new(arrow_error) as Box<dyn Error + Send + Sync>
-                })
-            }));
-        let mut expected_value: i32 = 1;
-        for row in Rows::from(boxed_iterator) {
-            assert!(row.is_ok());
-            if expected_value != 4 {
-                assert_eq!(row.unwrap().column::<i32>(0), expected_value);
-                expected_value += 1;
-            } else {
-                assert!(row.unwrap().is_null(0));
-            }
-        }
+    fn test_query_rows() {
+        let conn = Connection::open("mock://").unwrap();
+        let mut stmt = conn.prepare("SELECT 2").unwrap();
+        let mut rows = conn.query_rows(&mut stmt, NO_PARAM).unwrap();
+        assert_eq!(rows.next().unwrap().unwrap().column::<i32>(0), 1);
+        assert_eq!(rows.next().unwrap().unwrap().column_by_name::<i32>("col0"), 2);
+        assert!(rows.next().is_none());
     }
 
     #[test]

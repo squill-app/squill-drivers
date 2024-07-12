@@ -2,8 +2,8 @@ use crate::Sqlite;
 use crate::DRIVER_NAME;
 use crate::IN_MEMORY_URI;
 use crate::IN_MEMORY_URI_PATH;
-use squill_core::driver::{DriverConnection, DriverFactory};
-use squill_core::Result;
+use squill_core::driver::{DriverConnection, DriverFactory, Result};
+use squill_core::Error;
 
 pub(crate) struct SqliteFactory {}
 
@@ -13,7 +13,7 @@ impl DriverFactory for SqliteFactory {
     }
 
     fn open(&self, uri: &str) -> Result<Box<dyn DriverConnection>> {
-        let parsed_uri = url::Url::parse(uri)?;
+        let parsed_uri = url::Url::parse(uri).map_err(|_| Error::InvalidUri { uri: uri.to_string() })?;
         let mut sqlite_uri = uri.to_string();
         // SQLite id expecting to have some flags set when opening a database even if the `mode` URI parameter will
         // eventually override them.

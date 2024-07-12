@@ -1,9 +1,7 @@
 use crate::statement::DuckDBStatement;
+use squill_core::driver::{DriverConnection, DriverStatement, Result};
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use squill_core::driver::{DriverConnection, DriverStatement};
-use squill_core::Result;
 
 use crate::{DuckDB, DRIVER_DUCKDB};
 
@@ -20,7 +18,7 @@ impl DriverConnection for DuckDB {
         let result = self.conn.close();
         match result {
             Ok(_) => Ok(()),
-            Err((_connection, e)) => Err(Box::new(e)),
+            Err((_connection, error)) => Err(error.into()),
         }
     }
 }

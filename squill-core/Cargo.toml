@@ -9,6 +9,12 @@ categories.workspace = true
 edition.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+
+# Enable this feature to use the mock implementation of the driver's traits.
+mock = []
+
 [dependencies]
 arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
@@ -17,7 +23,5 @@ chrono = { workspace = true }
 rust_decimal = { workspace = true }
 uuid = { workspace = true }
 regex = { workspace = true }
-
-[dev-dependencies]
-ctor = { workspace = true }
 mockall = { workspace = true }
+ctor = { workspace = true }
