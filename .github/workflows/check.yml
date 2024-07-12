@@ -1,0 +1,62 @@
+name: Quick checks
+on: [push, pull_request]
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update and install dependencies
+        run: apt update && apt install curl build-essential -y
+
+  check:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Check the library and its dependencies for errors
+        run: |
+          cargo check --workspace --all-targets --all-features
+
+  audit:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo audit
+        run: cargo install cargo-audit
+      - name: Security audit of the dependencies
+        run: cargo audit
+
+  clippy:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Running clippy
+        run: |
+          cargo clippy --all-targets --all-features --examples --tests
+
+  fmt:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all --check
