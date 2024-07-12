@@ -18,7 +18,7 @@ jobs:
         run: sudo apt update && sudo apt install curl build-essential -y
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: setup
     steps:
       - name: Checkout repository
