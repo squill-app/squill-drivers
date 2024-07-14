@@ -22,7 +22,12 @@ impl DriverFactory for SqliteFactory {
             sqlite_uri.replace_range(0..IN_MEMORY_URI.len(), "file::memory:");
         } else {
             flags.insert(rusqlite::OpenFlags::SQLITE_OPEN_CREATE);
-            sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
+            if cfg!(target_os = "windows") {
+                sqlite_uri.replace_range(0.."sqlite:".len(), "file:/");
+            }
+            else {
+                sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
+            }
         }
         let conn = rusqlite::Connection::open_with_flags(sqlite_uri, flags)?;
         Ok(Box::new(Sqlite { conn }))

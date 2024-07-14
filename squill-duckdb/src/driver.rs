@@ -38,7 +38,7 @@ mod tests {
 
     fn path_to_duckdb_uri(dir_path: &Path, db_file: &str) -> String {
         let path = if cfg!(target_os = "windows") {
-            dir_path.canonicalize().unwrap().to_string_lossy().replace('\\', "/")
+            dir_path.to_string_lossy().replace('\\', "/")
         } else {
             dir_path.canonicalize().unwrap().to_string_lossy().to_string()
         };
