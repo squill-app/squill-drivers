@@ -15,11 +15,12 @@ fn main() -> Result<()> {
     //   id: 1, name: Employee #1
     //   id: 2, name: Employee #2
     //
-    let rows: Rows = query_arrow!(stmt, 2)?.into();
-    for next_row in rows {
-        let row = next_row?;
-        println!("id: {}, name: {}", row.column::<i64>(0), row.column::<String>(1));
+    let mut rows: Rows = query_arrow!(stmt, 2)?.into();
+    while let Some(Ok(row)) = rows.next() {
+        let employee: (i64, String) = (row.get("id"), row.get("name"));
+        println!("id: {}, name: {}", employee.0, employee.1);
     }
+    drop(rows); // because rows borrows the statement, we need to drop it before reusing the statement
 
     println!();
 
@@ -35,29 +36,18 @@ fn main() -> Result<()> {
     //   3    Employee #3
     //   ──────────────────
     let mut rows: Rows = query_arrow!(stmt, 3)?.into();
-
     let mut table = Table::new();
     table.load_preset(comfy_table::presets::UTF8_HORIZONTAL_ONLY);
-    let mut row = rows.next();
-    if let Some(Ok(ref row)) = row.as_ref() {
-        table.set_header(row.schema().fields().iter().map(|f| f.name().to_string()).collect::<Vec<String>>());
-    }
-
-    loop {
-        match row {
-            Some(Ok(row)) => {
-                table.add_row(vec![row.column_by_name::<i64>("id").to_string(), row.column_by_name::<String>("name")]);
-            }
-            Some(Err(e)) => {
-                return Err(e);
-            }
-            None => {
-                break;
-            }
+    let mut next_row = rows.next();
+    if let Some(Ok(ref first_row)) = next_row.as_ref() {
+        table.set_header(first_row.schema().fields().iter().map(|f| f.name().to_string()).collect::<Vec<String>>());
+        while let Some(Ok(row)) = next_row {
+            let employee: (i64, String) = (row.get("id"), row.get("name"));
+            table.add_row(vec![employee.0.to_string(), employee.1.to_string()]);
+            next_row = rows.next();
         }
-        row = rows.next();
+        println!("{table}");
     }
-    println!("{table}");
 
     Ok(())
 }

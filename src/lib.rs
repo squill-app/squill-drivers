@@ -17,6 +17,7 @@ pub use squill_core::connection::Connection;
 pub use squill_core::parameters::Parameters;
 pub use squill_core::rows::Row;
 pub use squill_core::rows::Rows;
+pub use squill_core::statement::Statement;
 pub use squill_core::Result;
 
 // Re-export the macros.

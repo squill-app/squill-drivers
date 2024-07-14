@@ -154,8 +154,9 @@ mod tests {
         let mut stmt = conn.prepare("INSERT 1").unwrap();
         assert!(conn.query_arrow(&mut stmt, NO_PARAM).is_err());
         drop(stmt);
-        assert_eq!(conn.query_row("SELECT 1", NO_PARAM).unwrap().column::<i32>(0), 1);
-        assert!(conn.query_row("SELECT 0", NO_PARAM).is_err());
+        assert_eq!(conn.query_row("SELECT 1", NO_PARAM).unwrap().get::<usize, i32>(0), 1);
+        assert!(matches!(conn.query_row("SELECT 0", NO_PARAM), Err(Error::NotFound)));
+        assert!(conn.query_row("SELECT -1", NO_PARAM).is_err());
         assert!(conn.query_row("SELECT X", NO_PARAM).is_err());
 
         // Test connection close

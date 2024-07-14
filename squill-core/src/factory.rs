@@ -27,13 +27,14 @@ impl Factory {
     }
 
     pub fn open(uri: &str) -> Result<Box<dyn DriverConnection>> {
+        // Extract the scheme from the URI.
         if let Some(captures) = regex::Regex::new("^([a-zA-Z][a-zA-Z0-9+.-]*):")?.captures(uri) {
-            if captures.len() > 1 {
-                let scheme = captures.get(1).unwrap().as_str();
-                match DRIVER_FACTORIES.find(scheme) {
-                    Some(driver) => return driver.open(uri).map_err(Error::from),
-                    None => return Err(Error::DriverNotFound { scheme: scheme.to_string() }),
-                }
+            // It is safe to unwrap because the regex has matched and the capture group must be present otherwise the
+            // regex would not match.
+            let scheme = captures.get(1).unwrap().as_str();
+            match DRIVER_FACTORIES.find(scheme) {
+                Some(driver) => return driver.open(uri).map_err(Error::from),
+                None => return Err(Error::DriverNotFound { scheme: scheme.to_string() }),
             }
         }
         Err(Error::InvalidUri { uri: uri.to_string() })

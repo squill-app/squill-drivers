@@ -13,6 +13,7 @@ pub enum Error {
     InvalidParameterCount { expected: usize, actual: usize },
     InvalidUri { uri: String },
     NotFound,
+    OutOfBounds { index: usize },
     UnsupportedDataType,
 }
 
@@ -55,6 +56,7 @@ impl std::fmt::Display for Error {
             }
             Error::InvalidUri { uri } => write!(f, "Invalid URI: {}", uri),
             Error::NotFound => write!(f, "Not found"),
+            Error::OutOfBounds { index } => write!(f, "Out of bounds index {}", index),
             Error::UnsupportedDataType => write!(f, "Unsupported type"),
         }
     }

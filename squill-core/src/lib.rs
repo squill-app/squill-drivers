@@ -12,11 +12,15 @@ pub mod rows;
 pub mod statement;
 pub mod values;
 
+/// The mock module is only available when running test or when the `mock` feature is enabled.
+/// It provides a mock implementation of the driver and connection to be used in tests.
+#[cfg(any(test, feature = "mock"))]
+pub mod mock;
+
 /// The error type used across the library.
 ///
-/// Because each driver may have its own error type, we need to use a trait object to abstract over them.
-// pub type Error = Box<dyn std::error::Error + Send + Sync>;
-
+/// All errors produced by the crates in this workspace are supposed to be {{Error}}. Only the drivers are allowed to
+/// return their own error types {{DriverError}} which will be then converted to an {{Error}}.
 pub type Error = error::Error;
 
 /// A specialized `Result` type for this library.

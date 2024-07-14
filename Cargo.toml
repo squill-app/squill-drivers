@@ -67,14 +67,20 @@ squill-sqlite = { workspace = true, optional = true }
 [dev-dependencies]
 criterion = "0.5.1"
 comfy-table = "7.1.1"
+squill-core = { workspace = true, features = ["mock"] }
 
 [features]
 default = ["async", "sqlite"]
 duckdb = ["squill-duckdb"]
 async = ["squill-async"]
 sqlite = ["squill-sqlite"]
+all = ["default", "sqlite", "duckdb"]
 
 [[example]]
 name = "rows"
 required-features = ["duckdb"]
 path = "./examples/rows.rs"
+
+[[bench]]
+name = "columns"
+harness = false

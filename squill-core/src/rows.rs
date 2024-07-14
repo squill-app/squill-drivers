@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{Error, Result};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use std::sync::Arc;
@@ -15,6 +15,7 @@ impl<'i> From<Box<dyn Iterator<Item = Result<RecordBatch>> + 'i>> for Rows<'i> {
     }
 }
 
+/// A row returned by a query.
 pub struct Row {
     record_batch: Arc<RecordBatch>,
     index_in_batch: usize,
@@ -26,103 +27,37 @@ impl Row {
         self.record_batch.schema()
     }
 
-    /// Get the description of a column from its index.
-    ///
-    /// # Panics
-    /// Panics if the column index is out of bounds.
-    pub fn describe_column(&self, index: usize) -> arrow_schema::Field {
-        self.schema().field(index).clone()
-    }
-
     /// Get the number of columns in the row.
     pub fn num_columns(&self) -> usize {
-        self.schema().fields().len()
-    }
-
-    /// Get the value of a column from its index.
-    ///
-    /// The index of the column is 0-based.
-    ///
-    /// # Panics
-    /// Panics if the column index is out of bounds or if the type is not the expected one.
-    pub fn column<T: GetColumn>(&self, index: usize) -> T {
-        T::get_column(&self.record_batch, self.index_in_batch, index)
-    }
-
-    /// Get the value of a column from its name.
-    ///
-    /// The name of the column is case-sensitive.
-    /// # Panics
-    /// Panics if the column name is not found or if the type is not the expected one.
-    pub fn column_by_name<T: GetColumn>(&self, name: &str) -> T {
-        T::get_column_by_name(&self.record_batch, self.index_in_batch, name)
+        self.record_batch.num_columns()
     }
 
     /// Check if the value of a column from its index is null.
     ///
     /// # Panics
     /// Panics if the column index is out of bounds.
-    pub fn is_null(&self, index: usize) -> bool {
-        self.record_batch.column(index).is_null(self.index_in_batch)
-    }
-}
-
-pub trait GetColumn {
-    fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self;
-    fn get_column_by_name(record_batch: &RecordBatch, index_in_batch: usize, name: &str) -> Self;
-}
-
-macro_rules! impl_get_column {
-    ($type:ty, $array_type:ident) => {
-        impl GetColumn for $type {
-            fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self {
-                record_batch
-                    .column(index)
-                    .as_any()
-                    .downcast_ref::<arrow_array::$array_type>()
-                    .unwrap()
-                    .value(index_in_batch)
-            }
-            fn get_column_by_name(record_batch: &RecordBatch, index_in_batch: usize, name: &str) -> Self {
-                match record_batch.schema().index_of(name) {
-                    Ok(index) => Self::get_column(record_batch, index_in_batch, index),
-                    Err(_e) => panic!("Column '{}' not found", name),
-                }
-            }
+    pub fn is_null<T: ColumnIndex>(&self, index: T) -> bool {
+        match index.index(self.record_batch.schema()) {
+            Ok(index) => self.record_batch.column(index).is_null(self.index_in_batch),
+            Err(e) => panic!("{}", e),
         }
-    };
-}
-
-impl_get_column!(i8, Int8Array);
-impl_get_column!(i16, Int16Array);
-impl_get_column!(i32, Int32Array);
-impl_get_column!(i64, Int64Array);
-impl_get_column!(u8, UInt8Array);
-impl_get_column!(u16, UInt16Array);
-impl_get_column!(u32, UInt32Array);
-impl_get_column!(u64, UInt64Array);
-impl_get_column!(f32, Float32Array);
-impl_get_column!(f64, Float64Array);
-impl_get_column!(bool, BooleanArray);
-
-impl GetColumn for String {
-    fn get_column(record_batch: &RecordBatch, index_in_batch: usize, column: usize) -> Self {
-        record_batch
-            .column(column)
-            .as_any()
-            .downcast_ref::<arrow_array::StringArray>()
-            .unwrap()
-            .value(index_in_batch)
-            .into()
     }
-    fn get_column_by_name(record_batch: &RecordBatch, index_in_batch: usize, name: &str) -> Self {
-        match record_batch.schema().index_of(name) {
-            Ok(index) => Self::get_column(record_batch, index_in_batch, index),
-            Err(_e) => panic!("Column '{}' not found", name),
+
+    /// Get a value from a column by its index.
+    ///
+    /// The index of the column can be either a 0-based index or the name of the column.
+    ///
+    /// # Panics
+    /// Panics if the column index is out of bounds or if the type is not the expected one.
+    pub fn get<I: ColumnIndex, T: GetColumn>(&self, index: I) -> T {
+        match index.index(self.record_batch.schema()) {
+            Ok(index) => T::get_column(&self.record_batch, self.index_in_batch, index),
+            Err(e) => panic!("{}", e),
         }
     }
 }
 
+/// An iterator over the rows returned by a query.
 impl<'i> Iterator for Rows<'i> {
     type Item = Result<Row>;
 
@@ -147,6 +82,63 @@ impl<'i> Iterator for Rows<'i> {
     }
 }
 
+/// A trait implemented by types that can index into columns of a row.
+pub trait ColumnIndex {
+    fn index(&self, schema: SchemaRef) -> Result<usize>;
+}
+
+/// A trait to get a value from a column.
+impl ColumnIndex for usize {
+    fn index(&self, schema: SchemaRef) -> Result<usize> {
+        if *self >= schema.fields.len() {
+            Err(Error::OutOfBounds { index: *self })?;
+        }
+        Ok(*self)
+    }
+}
+
+impl ColumnIndex for &str {
+    fn index(&self, schema: SchemaRef) -> Result<usize> {
+        match schema.index_of(self) {
+            Ok(index) => Ok(index),
+            Err(_e) => Err(Error::NotFound),
+        }
+    }
+}
+
+pub trait GetColumn {
+    fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self;
+}
+
+macro_rules! impl_get_column {
+    ($type:ty, $array_type:ident) => {
+        impl GetColumn for $type {
+            fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self {
+                record_batch
+                    .column(index)
+                    .as_any()
+                    .downcast_ref::<arrow_array::$array_type>()
+                    .unwrap()
+                    .value(index_in_batch)
+                    .into()
+            }
+        }
+    };
+}
+
+impl_get_column!(i8, Int8Array);
+impl_get_column!(i16, Int16Array);
+impl_get_column!(i32, Int32Array);
+impl_get_column!(i64, Int64Array);
+impl_get_column!(u8, UInt8Array);
+impl_get_column!(u16, UInt16Array);
+impl_get_column!(u32, UInt32Array);
+impl_get_column!(u64, UInt64Array);
+impl_get_column!(f32, Float32Array);
+impl_get_column!(f64, Float64Array);
+impl_get_column!(bool, BooleanArray);
+impl_get_column!(String, StringArray);
+
 #[cfg(test)]
 mod tests {
     use crate::{connection::Connection, NO_PARAM};
@@ -159,8 +151,10 @@ mod tests {
         let conn = Connection::open("mock://").unwrap();
         let mut stmt = conn.prepare("SELECT 2").unwrap();
         let mut rows = conn.query_rows(&mut stmt, NO_PARAM).unwrap();
-        assert_eq!(rows.next().unwrap().unwrap().column::<i32>(0), 1);
-        assert_eq!(rows.next().unwrap().unwrap().column_by_name::<i32>("col0"), 2);
+        assert_eq!(rows.next().unwrap().unwrap().get::<usize, i32>(0), 1);
+        let row = rows.next().unwrap().unwrap();
+        assert!(!row.is_null(0));
+        assert_eq!(row.get::<&str, i32>("col0"), 2);
         assert!(rows.next().is_none());
     }
 
