@@ -75,6 +75,7 @@ mod tests {
     use arrow_array::Array;
     use rust_decimal::Decimal;
     use squill_core::connection::Connection;
+    use squill_core::decode::Decode;
     use squill_core::query_arrow;
     use squill_core::values::{TimeUnit, Value};
 
@@ -129,60 +130,22 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        // 0 - BOOLEAN
-        assert!(batch.column(0).as_any().downcast_ref::<arrow_array::BooleanArray>().unwrap().value(0));
-
-        // 1 - TINYINT
-        assert_eq!(batch.column(1).as_any().downcast_ref::<arrow_array::Int8Array>().unwrap().value(0), i8::MAX);
-
-        // 2 - SMALLINT
-        assert_eq!(batch.column(2).as_any().downcast_ref::<arrow_array::Int16Array>().unwrap().value(0), i16::MAX);
-
-        // 3 - INTEGER
-        assert_eq!(batch.column(3).as_any().downcast_ref::<arrow_array::Int32Array>().unwrap().value(0), i32::MAX);
-
-        // 4- BIGINT
-        assert_eq!(batch.column(4).as_any().downcast_ref::<arrow_array::Int64Array>().unwrap().value(0), i64::MAX);
-
-        // 5 - HUGEINT
-        assert_eq!(
-            batch.column(5).as_any().downcast_ref::<arrow_array::Decimal128Array>().unwrap().value(0),
-            i128::MAX
-        );
-
-        // 6 - UTINYINT
-        assert_eq!(batch.column(6).as_any().downcast_ref::<arrow_array::UInt8Array>().unwrap().value(0), u8::MAX);
-
-        // 7 - USMALLINT
-        assert_eq!(batch.column(7).as_any().downcast_ref::<arrow_array::UInt16Array>().unwrap().value(0), u16::MAX);
-
-        // 8 - UINTEGER
-        assert_eq!(batch.column(8).as_any().downcast_ref::<arrow_array::UInt32Array>().unwrap().value(0), u32::MAX);
-
-        // 9 - UBIGINT
-        assert_eq!(batch.column(9).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap().value(0), u64::MAX);
-
-        // 10 - UHUGEINT
-        // Not tested because DuckDB does not support UInt128 yet for some reason.
-        // assert_eq!(batch.column(10).as_any().downcast_ref::<arrow_array::UInt128Array>().unwrap().value(0), u128::MAX);
-
-        // 11 - FLOAT
-        assert_eq!(batch.column(11).as_any().downcast_ref::<arrow_array::Float32Array>().unwrap().value(0), f32::MAX);
-
-        // 12 - DOUBLE
-        assert_eq!(batch.column(12).as_any().downcast_ref::<arrow_array::Float64Array>().unwrap().value(0), f64::MAX);
-
-        // 13 - VARCHAR
-        assert_eq!(
-            batch.column(13).as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(0),
-            "Hello, World!"
-        );
-
+        // // u128 is not tested because DuckDB does not support UHUGEINT yet for some reason.
+        assert!(bool::decode(batch.column(0), 0)); // 0 - BOOLEAN
+        assert_eq!(i8::decode(batch.column(1), 0), i8::MAX); // 1 - TINYINT
+        assert_eq!(i16::decode(batch.column(2), 0), i16::MAX); // 2 - SMALLINT
+        assert_eq!(i32::decode(batch.column(3), 0), i32::MAX); // 3 - INTEGER
+        assert_eq!(i64::decode(batch.column(4), 0), i64::MAX); // 4 - BIGINT
+        assert_eq!(i128::decode(batch.column(5), 0), i128::MAX); // 5 - HUGEINT
+        assert_eq!(u8::decode(batch.column(6), 0), u8::MAX); // 6 - UTINYINT
+        assert_eq!(u16::decode(batch.column(7), 0), u16::MAX); // 7 - USMALLINT
+        assert_eq!(u32::decode(batch.column(8), 0), u32::MAX); // 8 - UINTEGER
+        assert_eq!(u64::decode(batch.column(9), 0), u64::MAX); // 9 - UBIGINT
+        assert_eq!(f32::decode(batch.column(11), 0), f32::MAX); // 11 - FLOAT
+        assert_eq!(f64::decode(batch.column(12), 0), f64::MAX); // 12 - DOUBLE
+        assert_eq!(String::decode(batch.column(13), 0), "Hello, World!"); // 13 - VARCHAR
+        assert_eq!(Vec::<u8>::decode(batch.column(14), 0), vec![0xde, 0xad, 0xbe, 0xef]);
         // 14 - BLOB
-        assert_eq!(
-            batch.column(14).as_any().downcast_ref::<arrow_array::BinaryArray>().unwrap().value(0),
-            vec![0xde, 0xad, 0xbe, 0xef]
-        );
     }
 
     #[test]

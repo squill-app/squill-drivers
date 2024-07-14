@@ -3,6 +3,7 @@
 use parameters::Parameters;
 
 pub mod connection;
+pub mod decode;
 pub mod driver;
 pub mod error;
 pub mod factory;

@@ -11,6 +11,7 @@ pub enum Error {
     DriverNotFound { scheme: String },
     InternalError { error: Box<dyn std::error::Error + Send + Sync> },
     InvalidParameterCount { expected: usize, actual: usize },
+    InvalidType { expected: String, actual: String },
     InvalidUri { uri: String },
     NotFound,
     OutOfBounds { index: usize },
@@ -53,6 +54,9 @@ impl std::fmt::Display for Error {
             Error::InternalError { error } => write!(f, "{}", error),
             Error::InvalidParameterCount { expected, actual } => {
                 write!(f, "Invalid parameter count: expected {}, actual {}", expected, actual)
+            }
+            Error::InvalidType { expected, actual } => {
+                write!(f, "Invalid type: expected '{}', actual '{}'", expected, actual)
             }
             Error::InvalidUri { uri } => write!(f, "Invalid URI: {}", uri),
             Error::NotFound => write!(f, "Not found"),

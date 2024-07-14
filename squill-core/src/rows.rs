@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::{decode::Decode, Error, Result};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use std::sync::Arc;
@@ -49,9 +49,9 @@ impl Row {
     ///
     /// # Panics
     /// Panics if the column index is out of bounds or if the type is not the expected one.
-    pub fn get<I: ColumnIndex, T: GetColumn>(&self, index: I) -> T {
+    pub fn get<I: ColumnIndex, T: Decode>(&self, index: I) -> T {
         match index.index(self.record_batch.schema()) {
-            Ok(index) => T::get_column(&self.record_batch, self.index_in_batch, index),
+            Ok(index) => T::decode(self.record_batch.column(index), self.index_in_batch),
             Err(e) => panic!("{}", e),
         }
     }
@@ -106,45 +106,9 @@ impl ColumnIndex for &str {
     }
 }
 
-pub trait GetColumn {
-    fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self;
-}
-
-macro_rules! impl_get_column {
-    ($type:ty, $array_type:ident) => {
-        impl GetColumn for $type {
-            fn get_column(record_batch: &RecordBatch, index_in_batch: usize, index: usize) -> Self {
-                record_batch
-                    .column(index)
-                    .as_any()
-                    .downcast_ref::<arrow_array::$array_type>()
-                    .unwrap()
-                    .value(index_in_batch)
-                    .into()
-            }
-        }
-    };
-}
-
-impl_get_column!(i8, Int8Array);
-impl_get_column!(i16, Int16Array);
-impl_get_column!(i32, Int32Array);
-impl_get_column!(i64, Int64Array);
-impl_get_column!(u8, UInt8Array);
-impl_get_column!(u16, UInt16Array);
-impl_get_column!(u32, UInt32Array);
-impl_get_column!(u64, UInt64Array);
-impl_get_column!(f32, Float32Array);
-impl_get_column!(f64, Float64Array);
-impl_get_column!(bool, BooleanArray);
-impl_get_column!(String, StringArray);
-
 #[cfg(test)]
 mod tests {
     use crate::{connection::Connection, NO_PARAM};
-
-    use super::*;
-    use arrow_array::RecordBatch;
 
     #[test]
     fn test_query_rows() {
@@ -156,36 +120,5 @@ mod tests {
         assert!(!row.is_null(0));
         assert_eq!(row.get::<&str, i32>("col0"), 2);
         assert!(rows.next().is_none());
-    }
-
-    #[test]
-    fn test_get_row_value() {
-        macro_rules! test_get_row_value {
-            ($data_type:ident, $arrow_data_type:ident, $array_type:ident, $value:expr) => {
-                let record_batch = RecordBatch::try_new(
-                    Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
-                        "col0",
-                        arrow_schema::DataType::$arrow_data_type,
-                        false,
-                    )])),
-                    vec![Arc::new(arrow_array::$array_type::from(vec![$value]))],
-                )
-                .unwrap();
-
-                assert_eq!($data_type::get_column(&record_batch, 0, 0), $value);
-            };
-        }
-        test_get_row_value!(i8, Int8, Int8Array, i8::MAX);
-        test_get_row_value!(i16, Int16, Int16Array, i16::MAX);
-        test_get_row_value!(i32, Int32, Int32Array, i32::MAX);
-        test_get_row_value!(i64, Int64, Int64Array, i64::MAX);
-        test_get_row_value!(u8, UInt8, UInt8Array, u8::MAX);
-        test_get_row_value!(u16, UInt16, UInt16Array, u16::MAX);
-        test_get_row_value!(u32, UInt32, UInt32Array, u32::MAX);
-        test_get_row_value!(u64, UInt64, UInt64Array, u64::MAX);
-        test_get_row_value!(f32, Float32, Float32Array, f32::MAX);
-        test_get_row_value!(f64, Float64, Float64Array, f64::MAX);
-        test_get_row_value!(bool, Boolean, BooleanArray, true);
-        test_get_row_value!(String, Utf8, StringArray, "Hello, World!".to_string());
     }
 }
