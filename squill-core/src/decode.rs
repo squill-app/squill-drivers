@@ -11,7 +11,7 @@ pub trait Decode: Sized {
 /// Returns whether the value at the given index is null.
 ///
 /// This is a helper function to work around the surprising behavior `is_null` method in the Arrow `Array` trait which
-/// will always return `false` for a {arrow_array::NullArray}.
+/// will always return `false` for a [arrow_array::NullArray].
 pub fn is_null(array: &dyn Array, index: usize) -> bool {
     if array.is_null(index) {
         true
