@@ -73,11 +73,13 @@ impl<'conn> Iterator for DuckDBStatement<'conn> {
 mod tests {
     use crate::IN_MEMORY_URI;
     use arrow_array::Array;
+    use chrono::NaiveTime;
     use rust_decimal::Decimal;
     use squill_core::connection::Connection;
     use squill_core::decode::Decode;
     use squill_core::query_arrow;
     use squill_core::values::{TimeUnit, Value};
+    use uuid::Uuid;
 
     #[test]
     fn test_binding_primitive_types() {
@@ -150,6 +152,8 @@ mod tests {
 
     #[test]
     fn test_binding_datetime_types() {
+        use chrono::{DateTime, Utc};
+
         let conn = Connection::open(IN_MEMORY_URI).unwrap();
         let mut stmt = conn
             .prepare(
@@ -173,10 +177,10 @@ mod tests {
             /* 1 */ Value::Date32(16375),
             /* 2 - binding for TIMESTAMP WITH TIME ZONE tested on #3 */
             /* 3 */
-            chrono::DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022-08:00").unwrap(),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022-08:00").unwrap(),
             /* 4 - binding for TIMESTAMP tested on #5 */
             /* 5 */
-            chrono::DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022Z").unwrap(),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022Z").unwrap(),
             /* 6 - binding on TIME tested on #7 */
             /* 7 */
             Value::Time64(TimeUnit::Second, 11 * 3600 + 30 * 60 + 10),
@@ -203,38 +207,38 @@ mod tests {
 
         // 2 - TIMESTAMP WITH TIME ZONE (no binding)
         assert_eq!(
-            batch.column(2).as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>().unwrap().value(0),
-            chrono::DateTime::parse_from_rfc3339("2024-07-03T15:56:05.716022Z").unwrap().timestamp_micros()
+            DateTime::<Utc>::decode(batch.column(2), 0),
+            chrono::DateTime::parse_from_rfc3339("2024-07-03T15:56:05.716022Z").unwrap()
         );
 
         // 3 - TIMESTAMP WITH TIME ZONE (binding)
         assert_eq!(
-            batch.column(3).as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>().unwrap().value(0),
-            chrono::DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022-08:00").unwrap().timestamp_micros()
+            DateTime::<Utc>::decode(batch.column(3), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022-08:00").unwrap()
         );
 
         // 4 - TIMESTAMP (no binding)
         assert_eq!(
-            batch.column(4).as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>().unwrap().value(0),
-            chrono::DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022Z").unwrap().timestamp_micros()
+            DateTime::<Utc>::decode(batch.column(4), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022Z").unwrap()
         );
 
         // 5 - TIMESTAMP (binding)
         assert_eq!(
-            batch.column(5).as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>().unwrap().value(0),
-            chrono::DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022Z").unwrap().timestamp_micros()
+            DateTime::<Utc>::decode(batch.column(5), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.716022Z").unwrap()
         );
 
         // 6 - TIME (no binding)
         assert_eq!(
-            batch.column(6).as_any().downcast_ref::<arrow_array::Time64MicrosecondArray>().unwrap().value(0),
-            11 * 3600 * 1_000_000 + 30 * 60 * 1_000_000 + 123456
+            NaiveTime::decode(batch.column(6), 0),
+            NaiveTime::parse_from_str("11:30:00.123456", "%H:%M:%S%.f").unwrap()
         );
 
         // 7 - TIME (binding)
         assert_eq!(
-            batch.column(7).as_any().downcast_ref::<arrow_array::Time64MicrosecondArray>().unwrap().value(0),
-            (11 * 3600 + 30 * 60 + 10) * 1_000_000
+            NaiveTime::decode(batch.column(7), 0),
+            NaiveTime::parse_from_str("11:30:10", "%H:%M:%S%.f").unwrap()
         );
 
         /*
@@ -289,8 +293,8 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        let _schema = format!("{:?}", batch.schema().field(3));
-        let _debug = format!("{:?}", batch.column(3));
+        let _schema = format!("{:?}", batch.schema().field(1));
+        let _debug = format!("{:?}", batch.column(1));
 
         // 0 - BIT
         // Not tested because because of a bug in DuckDB.
@@ -298,22 +302,16 @@ mod tests {
         // assert_eq!(batch.column(15).as_any().downcast_ref::<arrow_array::BinaryArray>().unwrap().value(0), vec![0xde, 0xad, 0xbe, 0xef]);
 
         // 1 - DECIMAL (no binding)
-        assert_eq!(batch.column(1).as_any().downcast_ref::<arrow_array::Decimal128Array>().unwrap().value(0), 1299);
+        assert_eq!(Decimal::decode(batch.column(1), 0), Decimal::from_i128_with_scale(1299, 2));
 
         // 2 - DECIMAL (binding)
-        assert_eq!(batch.column(2).as_any().downcast_ref::<arrow_array::Decimal128Array>().unwrap().value(0), 2099);
+        assert_eq!(Decimal::decode(batch.column(2), 0), Decimal::from_i128_with_scale(2099, 2));
 
         // 3 - UUID (no binding)
-        assert_eq!(
-            batch.column(3).as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(0),
-            "5843cded-a32a-428d-8194-97ee1b949eb9"
-        );
+        assert_eq!(Uuid::decode(batch.column(3), 0), Uuid::parse_str("5843cded-a32a-428d-8194-97ee1b949eb9").unwrap());
 
         // 3 - UUID (binding)
-        assert_eq!(
-            batch.column(4).as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(0),
-            "0e089c07-8654-4aab-9c25-4f3c44590251"
-        );
+        assert_eq!(Uuid::decode(batch.column(4), 0), Uuid::parse_str("0e089c07-8654-4aab-9c25-4f3c44590251").unwrap())
     }
 
     #[test]
@@ -339,11 +337,9 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        let _schema = format!("{:?}", batch.schema().field(0));
-        let _debug = format!("{:?}", batch.column(0));
-        assert!(batch.column(0).as_any().downcast_ref::<arrow_array::Int32Array>().unwrap().is_null(0));
-        assert!(batch.column(1).as_any().downcast_ref::<arrow_array::Int32Array>().unwrap().is_null(0));
-        assert!(batch.column(2).as_any().downcast_ref::<arrow_array::Int32Array>().unwrap().is_null(0));
+        assert!(batch.column(0).is_null(0));
+        assert!(batch.column(1).is_null(0));
+        assert!(batch.column(2).is_null(0));
     }
 
     #[test]
@@ -353,45 +349,14 @@ mod tests {
         let mut stmt_two = conn.prepare("SELECT 2").unwrap();
 
         let mut rows = query_arrow!(stmt_one).unwrap();
-        assert_eq!(
-            rows.next()
-                .unwrap()
-                .unwrap()
-                .column(0)
-                .as_any()
-                .downcast_ref::<arrow_array::Int32Array>()
-                .unwrap()
-                .value(0),
-            1
-        );
-
+        assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), 1);
         drop(rows);
 
         let mut rows = query_arrow!(stmt_two).unwrap();
-        assert_eq!(
-            rows.next()
-                .unwrap()
-                .unwrap()
-                .column(0)
-                .as_any()
-                .downcast_ref::<arrow_array::Int32Array>()
-                .unwrap()
-                .value(0),
-            2
-        );
+        assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), 2);
 
         let mut rows = query_arrow!(stmt_one).unwrap();
-        assert_eq!(
-            rows.next()
-                .unwrap()
-                .unwrap()
-                .column(0)
-                .as_any()
-                .downcast_ref::<arrow_array::Int32Array>()
-                .unwrap()
-                .value(0),
-            1
-        );
+        assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), 1);
     }
 
     #[test]
@@ -400,17 +365,7 @@ mod tests {
         let mut stmt = conn.prepare("SELECT ?").unwrap();
         for i in 1..=2 {
             let mut rows = query_arrow!(stmt, i).unwrap();
-            assert_eq!(
-                rows.next()
-                    .unwrap()
-                    .unwrap()
-                    .column(0)
-                    .as_any()
-                    .downcast_ref::<arrow_array::Int32Array>()
-                    .unwrap()
-                    .value(0),
-                i
-            );
+            assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), i);
         }
     }
 }

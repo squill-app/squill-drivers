@@ -15,7 +15,7 @@ impl DriverConnection for Sqlite {
     }
 
     fn prepare<'c: 's, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
-        Ok(Box::new(SqliteStatement { inner: self.conn.prepare(statement)? }))
+        Ok(Box::new(SqliteStatement { inner: self.conn.prepare(statement)?, options: self.options.clone() }))
     }
 }
 
@@ -40,10 +40,9 @@ mod tests {
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (?, ?)", 2, "Bob").unwrap(), 1);
 
         let mut stmt = conn.prepare("SELECT * FROM test").unwrap();
-        let mut rows = query_arrow!(stmt).unwrap();
-        assert!(rows.next().is_some());
-        assert!(rows.next().is_some());
-        assert!(rows.next().is_none());
+        let mut batch = query_arrow!(stmt).unwrap();
+        assert!(batch.next().is_some());
+        assert!(batch.next().is_none());
     }
 
     #[test]

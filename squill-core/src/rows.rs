@@ -115,7 +115,7 @@ mod tests {
         let conn = Connection::open("mock://").unwrap();
         let mut stmt = conn.prepare("SELECT 2").unwrap();
         let mut rows = conn.query_rows(&mut stmt, NO_PARAM).unwrap();
-        assert_eq!(rows.next().unwrap().unwrap().get::<usize, i32>(0), 1);
+        assert_eq!(rows.next().unwrap().unwrap().get::<_, i32>(0), 1);
         let row = rows.next().unwrap().unwrap();
         assert!(!row.is_null(0));
         assert_eq!(row.get::<&str, i32>("col0"), 2);

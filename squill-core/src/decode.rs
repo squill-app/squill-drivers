@@ -1,10 +1,23 @@
 use crate::{Error, Result};
 use arrow_array::array::Array;
+use chrono::Utc;
 
 /// A trait to decode values from an Arrow array.
 pub trait Decode: Sized {
     fn decode(array: &dyn Array, index: usize) -> Self;
     fn try_decode(array: &dyn Array, index: usize) -> Result<Self>;
+}
+
+/// Returns whether the value at the given index is null.
+///
+/// This is a helper function to work around the surprising behavior `is_null` method in the Arrow `Array` trait which
+/// will always return `false` for a {arrow_array::NullArray}.
+pub fn is_null(array: &dyn Array, index: usize) -> bool {
+    if array.is_null(index) {
+        true
+    } else {
+        array.as_any().downcast_ref::<arrow_array::NullArray>().is_some()
+    }
 }
 
 macro_rules! impl_decode {
@@ -44,13 +57,147 @@ impl_decode!(bool, BooleanArray);
 impl_decode!(String, StringArray);
 impl_decode!(Vec<u8>, BinaryArray);
 
+/// Decoding a UUID from a {{arrow_array::Array}}
+impl Decode for uuid::Uuid {
+    fn decode(array: &dyn Array, index: usize) -> Self {
+        match Self::try_decode(array, index) {
+            Ok(uuid) => uuid,
+            Err(_) => panic!("Unable to decode a UUID"),
+        }
+    }
+
+    fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
+        if index >= array.len() {
+            return Err(Error::OutOfBounds { index });
+        }
+        match array.as_any().downcast_ref::<arrow_array::StringArray>() {
+            Some(array) => {
+                let value = array.value(index);
+                uuid::Uuid::parse_str(value).map_err(|e| Error::InternalError { error: e.into() })
+            }
+            None => {
+                Err(Error::InvalidType { expected: "StringArray".to_string(), actual: array.data_type().to_string() })
+            }
+        }
+    }
+}
+
+/// Decoding a Decimal from {{arrow_array::Array}}
+impl Decode for rust_decimal::Decimal {
+    fn decode(array: &dyn Array, index: usize) -> Self {
+        match Self::try_decode(array, index) {
+            Ok(decimal) => decimal,
+            Err(_) => panic!("Unable to decode a Decimal"),
+        }
+    }
+
+    fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
+        if index >= array.len() {
+            return Err(Error::OutOfBounds { index });
+        }
+        match array.as_any().downcast_ref::<arrow_array::Decimal128Array>() {
+            Some(array) => Ok(rust_decimal::Decimal::from_i128_with_scale(array.value(index), array.scale() as u32)),
+            None => Err(Error::InvalidType {
+                expected: "Decimal128Array".to_string(), // FIXME:
+                actual: array.data_type().to_string(),
+            }),
+        }
+    }
+}
+
+/// Decoding a DateTime from {{arrow_array::Array}}
+impl Decode for chrono::DateTime<chrono::Utc> {
+    fn decode(array: &dyn Array, index: usize) -> Self {
+        match Self::try_decode(array, index) {
+            Ok(datetime) => datetime,
+            Err(e) => panic!("Unable to decode DateTime (reason: {:?})", e),
+        }
+    }
+
+    fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
+        if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampSecondArray>() {
+            match chrono::DateTime::<Utc>::from_timestamp(array.value(index), 0) {
+                Some(datetime) => Ok(datetime),
+                None => Err(Error::InternalError {
+                    error: format!("Out of range datetime: {}s.", array.value(index)).into(),
+                }),
+            }
+        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampMillisecondArray>() {
+            match chrono::DateTime::<Utc>::from_timestamp_millis(array.value(index)) {
+                Some(datetime) => Ok(datetime),
+                None => Err(Error::InternalError {
+                    error: format!("Out of range datetime: {}ms.", array.value(index)).into(),
+                }),
+            }
+        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>() {
+            match chrono::DateTime::<Utc>::from_timestamp_micros(array.value(index)) {
+                Some(datetime) => Ok(datetime),
+                None => Err(Error::InternalError {
+                    error: format!("Out of range datetime: {}μs.", array.value(index)).into(),
+                }),
+            }
+        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampNanosecondArray>() {
+            Ok(chrono::DateTime::from_timestamp_nanos(array.value(index)))
+        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::Int64Array>() {
+            // Expecting Epoch seconds
+            match chrono::DateTime::<Utc>::from_timestamp(array.value(index), 0) {
+                Some(datetime) => Ok(datetime),
+                None => Err(Error::InternalError {
+                    error: format!("Out of range datetime: {}s.", array.value(index)).into(),
+                }),
+            }
+        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::StringArray>() {
+            match chrono::DateTime::parse_from_rfc3339(array.value(index)) {
+                Ok(datetime) => Ok(datetime.with_timezone(&Utc)),
+                Err(e) => Err(Error::InternalError { error: e.into() }),
+            }
+        } else {
+            Err(Error::InvalidType {
+                expected: "Timestamp".to_string(), // FIXME:
+                actual: array.data_type().to_string(),
+            })
+        }
+    }
+}
+
+impl Decode for chrono::NaiveTime {
+    fn decode(array: &dyn Array, index: usize) -> Self {
+        match Self::try_decode(array, index) {
+            Ok(time) => time,
+            Err(e) => panic!("Unable to decode NaiveTime (reason: {:?})", e),
+        }
+    }
+
+    fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
+        match array.as_any().downcast_ref::<arrow_array::Time64MicrosecondArray>() {
+            Some(array) => {
+                let time_micros = array.value(index);
+                let time_secs = time_micros / 1_000_000;
+                match chrono::NaiveTime::from_num_seconds_from_midnight_opt(
+                    time_secs as u32,
+                    (time_micros % 1_000_000) as u32 * 1_000,
+                ) {
+                    Some(time) => Ok(time),
+                    None => Err(Error::InternalError { error: format!("Out of range time: {time_micros}.").into() }),
+                }
+            }
+            None => Err(Error::InvalidType {
+                expected: "Time64MicrosecondArray".to_string(), // FIXME:
+                actual: array.data_type().to_string(),
+            }),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use arrow_array::*;
+    use chrono::Timelike;
+    use rust_decimal::Decimal;
 
     #[test]
-    fn test_decode() {
+    fn test_decode_primitive_types() {
         let int8_array = Int8Array::from(vec![i8::MIN, i8::MAX]);
         assert_eq!(i8::decode(&int8_array, 0), i8::MIN);
         assert_eq!(i8::decode(&int8_array, 1), i8::MAX);
@@ -66,5 +213,64 @@ mod tests {
         assert_eq!(f64::decode(&Float64Array::from(vec![f64::MAX]), 0), f64::MAX);
         assert!(bool::decode(&BooleanArray::from(vec![true]), 0));
         assert_eq!(String::decode(&StringArray::from(vec!["test".to_string()]), 0), "test");
+    }
+
+    #[test]
+    fn test_decode_uuid() {
+        assert_eq!(
+            uuid::Uuid::decode(&StringArray::from(vec!["5d94967a-ee15-4f60-9677-1a959fab2982"]), 0),
+            uuid::Uuid::parse_str("5d94967a-ee15-4f60-9677-1a959fab2982").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_decode_decimal() {
+        assert_eq!(
+            rust_decimal::Decimal::decode(
+                &Decimal128Array::from(vec![1999]).with_precision_and_scale(10, 2).unwrap(),
+                0
+            ),
+            Decimal::from_i128_with_scale(1999, 2)
+        );
+    }
+
+    #[test]
+    fn test_decode_chrono() {
+        use chrono::{DateTime, NaiveTime, Utc};
+
+        let datetime = DateTime::parse_from_rfc3339("2024-07-03T08:56:05.001002003Z").unwrap();
+        assert_eq!(
+            DateTime::<Utc>::decode(&TimestampSecondArray::from(vec![datetime.timestamp()]), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05Z").unwrap()
+        );
+        assert_eq!(
+            DateTime::<Utc>::decode(&TimestampMillisecondArray::from(vec![datetime.timestamp_millis()]), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.001Z").unwrap()
+        );
+        assert_eq!(
+            DateTime::<Utc>::decode(&TimestampMicrosecondArray::from(vec![datetime.timestamp_micros()]), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05.001002Z").unwrap()
+        );
+        assert_eq!(
+            DateTime::<Utc>::decode(&TimestampNanosecondArray::from(vec![datetime.timestamp_nanos_opt().unwrap()]), 0),
+            datetime
+        );
+        assert_eq!(
+            DateTime::<Utc>::decode(&Int64Array::from(vec![datetime.timestamp()]), 0),
+            DateTime::parse_from_rfc3339("2024-07-03T08:56:05Z").unwrap()
+        );
+        assert_eq!(DateTime::<Utc>::decode(&StringArray::from(vec!["2024-07-03T08:56:05.001002003Z"]), 0), datetime);
+
+        let expected_time = NaiveTime::parse_from_str("11:30:00.123456", "%H:%M:%S%.f").unwrap();
+        assert_eq!(
+            NaiveTime::decode(
+                &arrow_array::Time64MicrosecondArray::from(vec![
+                    expected_time.num_seconds_from_midnight() as i64 * 1_000_000
+                        + expected_time.nanosecond() as i64 / 1_000
+                ]),
+                0
+            ),
+            expected_time
+        );
     }
 }

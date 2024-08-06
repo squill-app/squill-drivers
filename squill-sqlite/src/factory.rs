@@ -1,9 +1,11 @@
 use crate::Sqlite;
+use crate::SqliteOptions;
 use crate::DRIVER_NAME;
 use crate::IN_MEMORY_URI;
 use crate::IN_MEMORY_URI_PATH;
 use squill_core::driver::{DriverConnection, DriverFactory, Result};
 use squill_core::Error;
+use std::sync::Arc;
 
 pub(crate) struct SqliteFactory {}
 
@@ -24,12 +26,28 @@ impl DriverFactory for SqliteFactory {
             flags.insert(rusqlite::OpenFlags::SQLITE_OPEN_CREATE);
             if cfg!(target_os = "windows") {
                 sqlite_uri.replace_range(0.."sqlite:".len(), "file:/");
-            }
-            else {
+            } else {
                 sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
             }
         }
+        let mut options = SqliteOptions::default();
         let conn = rusqlite::Connection::open_with_flags(sqlite_uri, flags)?;
-        Ok(Box::new(Sqlite { conn }))
+        parsed_uri.query_pairs().try_for_each(|(key, value)| {
+            if key == "max_batch_rows" {
+                if let Ok(value) = value.parse::<usize>() {
+                    options.max_batch_rows = value;
+                } else {
+                    return Err(Error::InvalidUri { uri: uri.to_string() });
+                }
+            } else if key == "max_batch_bytes" {
+                if let Ok(max_batch_bytes) = value.parse::<bytesize::ByteSize>() {
+                    options.max_batch_bytes = max_batch_bytes.0 as usize;
+                } else {
+                    return Err(Error::InvalidUri { uri: uri.to_string() });
+                }
+            }
+            Ok(())
+        })?;
+        Ok(Box::new(Sqlite { conn, options: Arc::new(options) }))
     }
 }
