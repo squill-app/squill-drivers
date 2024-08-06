@@ -3,7 +3,7 @@
 /// This library is defining 2 error types:
 /// - {Error}: is the main error type for the library and the one the users of the library will interact with.
 /// - {DriverError}: is the error type that the drivers will use to return errors. Only developers of drivers will
-/// interact with this error type.
+///   interact with this error type.
 #[derive(Debug)]
 pub enum Error {
     ArrowError { error: arrow_schema::ArrowError },

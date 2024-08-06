@@ -30,6 +30,7 @@ impl DriverFactory for SqliteFactory {
                 sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
             }
         }
+        println!("SQLITE open_with_flags: {}", uri);
         let mut options = SqliteOptions::default();
         let conn = rusqlite::Connection::open_with_flags(sqlite_uri, flags)?;
         parsed_uri.query_pairs().try_for_each(|(key, value)| {

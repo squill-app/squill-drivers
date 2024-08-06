@@ -135,7 +135,7 @@ macro_rules! inner_append_value {
 impl SqliteRows<'_> {
     fn append_value(
         schema: &RefCell<SchemaRef>,
-        columns: &mut Vec<Box<dyn ArrayBuilder>>,
+        columns: &mut [Box<dyn ArrayBuilder>],
         row: &rusqlite::Row<'_>,
     ) -> Result<()> {
         let len = columns.len();
