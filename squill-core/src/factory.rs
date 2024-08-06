@@ -1,11 +1,12 @@
 use lazy_static::lazy_static;
 use std::sync::Arc;
 use std::sync::Mutex;
-
+use std::path::PathBuf;
 use crate::driver::DriverConnection;
 use crate::driver::DriverFactory;
 use crate::error::Error;
 use crate::Result;
+use path_slash::PathExt;
 
 lazy_static! {
     pub static ref DRIVER_FACTORIES: Factory = Factory { registered_factories: Mutex::new(Vec::new()) };
@@ -39,6 +40,25 @@ impl Factory {
         }
         Err(Error::InvalidUri { uri: uri.to_string() })
     }
+
+    /// Make a file path suitable for an URI.
+    /// 
+    /// 
+    pub fn to_uri_path(path: &PathBuf) -> String {
+        if cfg!(target_os = "windows") {
+            if path.is_absolute() {
+                // An absolute path for an URI is expected to start by / and not C:/
+                format!("/{}", path.to_slash_lossy())
+            }
+            else {
+                path.to_slash_lossy().to_string()
+            }
+        }
+        else {
+            path.to_string_lossy().into_owned()
+        }
+    }
+
 
     fn find(&self, scheme: &str) -> Option<Arc<Box<dyn DriverFactory>>> {
         for driver_factory in self.registered_factories.lock().unwrap().iter() {

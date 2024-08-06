@@ -25,3 +25,4 @@ uuid = { workspace = true }
 regex = { workspace = true }
 mockall = { workspace = true }
 ctor = { workspace = true }
+path-slash = { workspace = true }

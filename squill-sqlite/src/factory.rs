@@ -24,13 +24,9 @@ impl DriverFactory for SqliteFactory {
             sqlite_uri.replace_range(0..IN_MEMORY_URI.len(), "file::memory:");
         } else {
             flags.insert(rusqlite::OpenFlags::SQLITE_OPEN_CREATE);
-            if cfg!(target_os = "windows") {
-                sqlite_uri.replace_range(0.."sqlite:".len(), "file:/");
-            } else {
-                sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
-            }
+            sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
         }
-        println!("SQLITE open_with_flags: {}", uri);
+        println!("SQLITE open_with_flags: uri={}", uri);
         let mut options = SqliteOptions::default();
         let conn = rusqlite::Connection::open_with_flags(sqlite_uri, flags)?;
         parsed_uri.query_pairs().try_for_each(|(key, value)| {

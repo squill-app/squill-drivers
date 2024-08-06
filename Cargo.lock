@@ -1828,6 +1828,7 @@ dependencies = [
  "ctor",
  "lazy_static",
  "mockall",
+ "path-slash",
  "regex",
  "rust_decimal",
  "uuid",

@@ -28,21 +28,11 @@ mod tests {
     use crate::IN_MEMORY_URI;
     use ctor::ctor;
     use squill_core::{connection::Connection, execute, factory::Factory, query_arrow};
-    use std::path::Path;
     use url::Url;
 
     #[ctor]
     fn before_all() {
         crate::register_driver();
-    }
-
-    fn path_to_duckdb_uri(dir_path: &Path, db_file: &str) -> String {
-        let path = if cfg!(target_os = "windows") {
-            dir_path.to_string_lossy().replace('\\', "/")
-        } else {
-            dir_path.canonicalize().unwrap().to_string_lossy().to_string()
-        };
-        format!("duckdb://{}/{}", path, db_file)
     }
 
     #[test]
@@ -54,7 +44,8 @@ mod tests {
     fn test_open_file() {
         // create a new database file
         let temp_dir = tempfile::tempdir().unwrap();
-        assert!(Factory::open(path_to_duckdb_uri(temp_dir.path(), "test.db").as_str()).is_ok());
+        let file_path = temp_dir.path().join("test.db");
+        assert!(Factory::open(&format!("duckdb://{}", Factory::to_uri_path(&file_path))).is_ok());
 
         // opening an invalid file should return an error
         // assert!(Factory::open(path_to_duckdb_uri("./invalid-path/invalid.db".into()).as_str()).is_err());

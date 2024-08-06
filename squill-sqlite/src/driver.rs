@@ -22,8 +22,8 @@ impl DriverConnection for Sqlite {
 #[cfg(test)]
 mod tests {
     use ctor::ctor;
-    use path_slash::PathExt;
     use squill_core::{connection::Connection, execute, query_arrow};
+    use squill_core::factory::Factory;
 
     use crate::IN_MEMORY_URI;
 
@@ -58,10 +58,10 @@ mod tests {
         let file_path = temp_dir.path().join("test.db");
 
         // trying to open a file that does not exist in read-only should fail
-        assert!(Connection::open(&format!("sqlite://{}?mode=r", file_path.to_slash_lossy())).is_err());
+        assert!(Connection::open(&format!("sqlite://{}?mode=r", Factory::to_uri_path(&file_path))).is_err());
         // trying to open a file that does not exist in read-write should create it
         assert!(
-            Connection::open(&format!("sqlite://{}?mode=rwc&max_batch_size=12", file_path.to_slash_lossy())).is_ok()
+            Connection::open(&format!("sqlite://{}?mode=rwc&max_batch_size=12", Factory::to_uri_path(&file_path))).is_ok()
         );
     }
 
