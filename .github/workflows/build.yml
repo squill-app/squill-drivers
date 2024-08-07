@@ -3,7 +3,7 @@ on: [push, pull_request]
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  RUST_BACKTRACE: 1
+  RUST_BACKTRACE: full
   RUST_LOG: "info"
   RUST_LOG_SPAN_EVENTS: full
 
