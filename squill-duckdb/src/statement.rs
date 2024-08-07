@@ -72,6 +72,7 @@ impl<'conn> Iterator for DuckDBStatement<'conn> {
 #[cfg(test)]
 mod tests {
     use crate::IN_MEMORY_URI;
+    use arrow_array::types::IntervalMonthDayNanoType;
     use arrow_array::Array;
     use chrono::NaiveTime;
     use rust_decimal::Decimal;
@@ -241,17 +242,13 @@ mod tests {
             NaiveTime::parse_from_str("11:30:10", "%H:%M:%S%.f").unwrap()
         );
 
-        /*
-         * The following test is commended until next DuckDB release.
-         * https://github.com/duckdb/duckdb-rs/issues/350
-
         // 8 - INTERVAL (no binding)
         let (months, days, nanos) = IntervalMonthDayNanoType::to_parts(
             batch.column(8).as_any().downcast_ref::<arrow_array::IntervalMonthDayNanoArray>().unwrap().value(0),
         );
         assert_eq!(months, 12);
         assert_eq!(days, 5);
-        assert_eq!(nanos, 12 * 60 * 60 * 1_000_000_000 + 13 * 1_000_000 + 8);
+        assert_eq!(nanos, (12 * 60 + 13) * 1_000_000_000 + 8 * 1_000);
 
         // 9 - INTERVAL (binding)
         let (months, days, nanos) = IntervalMonthDayNanoType::to_parts(
@@ -259,9 +256,7 @@ mod tests {
         );
         assert_eq!(months, 7);
         assert_eq!(days, 3);
-        assert_eq!(nanos, 72_101_202_303);
-
-        **/
+        assert_eq!(nanos, 72_101_202_000);
     }
 
     #[test]
@@ -299,7 +294,10 @@ mod tests {
         // 0 - BIT
         // Not tested because because of a bug in DuckDB.
         // See https://github.com/duckdb/duckdb-rs/issues/349
-        // assert_eq!(batch.column(15).as_any().downcast_ref::<arrow_array::BinaryArray>().unwrap().value(0), vec![0xde, 0xad, 0xbe, 0xef]);
+        // assert_eq!(
+        //     batch.column(0).as_any().downcast_ref::<arrow_array::BinaryArray>().unwrap().value(0),
+        //     vec![0xde, 0xad, 0xbe, 0xef]
+        // );
 
         // 1 - DECIMAL (no binding)
         assert_eq!(Decimal::decode(batch.column(1), 0), Decimal::from_i128_with_scale(1299, 2));

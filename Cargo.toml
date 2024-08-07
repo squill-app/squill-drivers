@@ -29,8 +29,8 @@ squill-duckdb = { version = "0.1.0", path = "./squill-duckdb" }
 squill-sqlite = { version = "0.1.0", path = "./squill-sqlite" }
 squill-drivers = { version = "0.1.0", path = "./squill-drivers" }
 tracing = "0.1.40"
-arrow-schema = { version = "51.0.0" }
-arrow-array = { version = "51.0.0", default-features = false, features = [
+arrow-schema = { version = "52" }
+arrow-array = { version = "52", default-features = false, features = [
     "chrono-tz",
 ] }
 tempfile = "3.10.1"
