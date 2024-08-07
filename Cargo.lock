@@ -1869,7 +1869,6 @@ dependencies = [
  "arrow-schema",
  "bytesize",
  "ctor",
- "path-slash",
  "rusqlite",
  "squill-core",
  "tempfile",
