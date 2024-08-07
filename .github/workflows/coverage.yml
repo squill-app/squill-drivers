@@ -29,7 +29,7 @@ jobs:
 
       - name: Running tests
         run: |
-          cargo test --workspace
+          cargo test --workspace --all-features
 
       - name: Generate coverage reports
         run: |

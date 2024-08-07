@@ -39,4 +39,4 @@ jobs:
 
       - name: Running tests
         run: |
-          cargo test --workspace --features mock -- --nocapture
+          cargo test --workspace --all-features -- --nocapture
