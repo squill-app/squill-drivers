@@ -25,6 +25,8 @@ impl DriverFactory for DuckDBFactory {
             // for in memory databases.
             path = ":memory:";
         } else if cfg!(target_os = "windows") {
+            // Under Windows, the path starts with a `/` (a.k.a. '/C:/test.db') which is not a valid path for the
+            // `duckdb::Connection::open_with_flags`. We need to remove the first character.
             path = path.char_indices().nth(1).map_or("", |(i, _)| &path[i..]);
         }
         let conn = duckdb::Connection::open_with_flags(path, config)?;

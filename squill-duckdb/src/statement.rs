@@ -78,8 +78,8 @@ mod tests {
     use rust_decimal::Decimal;
     use squill_core::connection::Connection;
     use squill_core::decode::Decode;
-    use squill_core::query_arrow;
     use squill_core::values::{TimeUnit, Value};
+    use squill_core::{execute, query_arrow};
     use uuid::Uuid;
 
     #[test]
@@ -156,6 +156,7 @@ mod tests {
         use chrono::{DateTime, Utc};
 
         let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let _ = execute!(conn, "SET TimeZone='UTC'");
         let mut stmt = conn
             .prepare(
                 r#"SELECT 
