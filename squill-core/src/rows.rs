@@ -1,3 +1,4 @@
+use crate::decode;
 use crate::{decode::Decode, Error, Result};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
@@ -38,7 +39,7 @@ impl Row {
     /// Panics if the column index is out of bounds.
     pub fn is_null<T: ColumnIndex>(&self, index: T) -> bool {
         match index.index(self.record_batch.schema()) {
-            Ok(index) => self.record_batch.column(index).is_null(self.index_in_batch),
+            Ok(index) => decode::is_null(self.record_batch.column(index), self.index_in_batch),
             Err(e) => panic!("{}", e),
         }
     }
