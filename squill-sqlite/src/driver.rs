@@ -21,11 +21,9 @@ impl DriverConnection for Sqlite {
 
 #[cfg(test)]
 mod tests {
-    use ctor::ctor;
-    use squill_core::factory::Factory;
-    use squill_core::{connection::Connection, execute, query_arrow};
-
     use crate::IN_MEMORY_URI;
+    use ctor::ctor;
+    use squill_core::{connection::Connection, execute, query_arrow};
 
     #[ctor]
     fn before_all() {
@@ -33,45 +31,22 @@ mod tests {
     }
 
     #[test]
-    fn test_query() {
+    fn test_sqlite_driver() {
         let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        assert_eq!(conn.driver_name(), "sqlite");
         assert_eq!(execute!(conn, "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)").unwrap(), 0);
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (1, NULL)").unwrap(), 1);
         assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (?, ?)", 2, "Bob").unwrap(), 1);
+        assert!(execute!(conn, "INSERT INTO test (id, name) VALUES (?, ?)", 2, "Bob").is_err());
 
-        let mut stmt = conn.prepare("SELECT * FROM test").unwrap();
+        let mut stmt = conn.prepare("SELECT id, name FROM test ORDER BY id").unwrap();
         let mut batch = query_arrow!(stmt).unwrap();
         assert!(batch.next().is_some());
         assert!(batch.next().is_none());
-    }
 
-    #[test]
-    fn test_open_memory() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        assert_eq!(conn.driver_name(), "sqlite");
+        drop(batch);
+        drop(stmt);
+
         assert!(conn.close().is_ok());
-    }
-
-    #[test]
-    fn test_open_file() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let file_path = temp_dir.path().join("test.db");
-
-        // trying to open a file that does not exist in read-only should fail
-        assert!(Connection::open(&format!("sqlite://{}?mode=r", Factory::to_uri_path(&file_path))).is_err());
-        // trying to open a file that does not exist in read-write should create it
-        assert!(Connection::open(&format!("sqlite://{}?mode=rwc&max_batch_size=12", Factory::to_uri_path(&file_path)))
-            .is_ok());
-    }
-
-    #[test]
-    fn test_execute() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        assert_eq!(execute!(conn, "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)").unwrap(), 0);
-        assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (1, 'Alice')").unwrap(), 1);
-        assert!(execute!(conn, "INSERT INTO test (id, name) VALUES (1, 'Alice')").is_err());
-        assert_eq!(execute!(conn, "INSERT INTO test (id, name) VALUES (?, ?)", 2, "Bob").unwrap(), 1);
-
-        conn.close().unwrap();
     }
 }

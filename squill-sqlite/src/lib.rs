@@ -8,17 +8,15 @@ mod value;
 /// The name of the driver for SQLite.
 pub const DRIVER_NAME: &str = "sqlite";
 
-/// The path in a URI for in-memory databases.
-pub const IN_MEMORY_URI_PATH: &str = "/:memory:";
-
-/// The URI for in-memory databases.
+/// URI for an in-memory databases.
 ///
 /// # Example
 /// ```rust
 /// # use squill_core::connection::Connection;
-/// let conn = Connection::open("sqlite:///:in-memory:");
+/// # use squill_sqlite::IN_MEMORY_URI;
+/// let conn = Connection::open(IN_MEMORY_URI);
 /// ```
-pub const IN_MEMORY_URI: &str = "sqlite:///:memory:";
+pub const IN_MEMORY_URI: &str = "sqlite::memory:";
 
 pub(crate) struct SqliteOptions {
     /// The maximum number rows that can be written in a single batch.
