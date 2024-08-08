@@ -29,6 +29,12 @@ pub mod futures {
     pub use squill_async::RecordBatchStream;
 }
 
+#[cfg(feature = "sqlite")]
+pub mod sqlite {
+    pub use squill_sqlite::IN_MEMORY_SPECIAL_FILENAME;
+    pub use squill_sqlite::IN_MEMORY_URI;
+}
+
 pub fn register_drivers() {
     #[cfg(feature = "duckdb")]
     squill_duckdb::register_driver();

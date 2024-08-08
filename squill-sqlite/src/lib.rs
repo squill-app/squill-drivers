@@ -8,6 +8,10 @@ mod value;
 /// The name of the driver for SQLite.
 pub const DRIVER_NAME: &str = "sqlite";
 
+/// Special filename for an in-memory databases.
+/// https://www.sqlite.org/inmemorydb.html
+pub const IN_MEMORY_SPECIAL_FILENAME: &str = ":memory:";
+
 /// URI for an in-memory databases.
 ///
 /// # Example
