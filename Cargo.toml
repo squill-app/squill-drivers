@@ -71,11 +71,10 @@ comfy-table = "7.1.1"
 squill-core = { workspace = true, features = ["mock"] }
 
 [features]
-default = ["async", "sqlite"]
+default = []
 duckdb = ["squill-duckdb"]
 async = ["squill-async"]
 sqlite = ["squill-sqlite"]
-all = ["default", "sqlite", "duckdb"]
 
 [[example]]
 name = "rows"

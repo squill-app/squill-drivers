@@ -21,7 +21,7 @@ function codecov() {
     -o ./target/coverage/
 }
 
-fucntion clean() {
+function clean() {
   local profile_files=($(find . -name "rsql-*.profraw" -print))
   for file in "${profile_files[@]}"; do
     rm $file
