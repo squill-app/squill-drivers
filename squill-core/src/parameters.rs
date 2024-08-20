@@ -2,38 +2,28 @@ use crate::values::{ToValue, Value};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Parameters {
-    None,
     Positional(Vec<Value>),
 }
 
-pub const NO_PARAMS: Parameters = Parameters::None;
-
 impl Parameters {
     pub fn from_slice(values: &[&dyn ToValue]) -> Self {
-        if values.is_empty() {
-            Parameters::None
-        } else {
-            Parameters::Positional(values.iter().map(|v| v.to_value()).collect())
-        }
+        Parameters::Positional(values.iter().map(|v| v.to_value()).collect())
     }
 
     pub fn is_empty(&self) -> bool {
         match self {
-            Parameters::None => true,
             Parameters::Positional(values) => values.is_empty(),
         }
     }
 
     pub fn len(&self) -> usize {
         match self {
-            Parameters::None => 0,
             Parameters::Positional(values) => values.len(),
         }
     }
 
     pub fn get(&self, index: usize) -> Option<&Value> {
         match self {
-            Parameters::None => None,
             Parameters::Positional(values) => values.get(index),
         }
     }

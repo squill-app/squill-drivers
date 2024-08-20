@@ -21,7 +21,7 @@ impl Statement<'_> {
         await_on!(rx)
     }
 
-    pub fn execute(&self, parameters: Parameters) -> BoxFuture<'_, Result<u64>> {
+    pub fn execute(&self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<u64>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.command_tx.send(Command::ExecutePreparedStatement { handle: self.handle, parameters, tx })
         {

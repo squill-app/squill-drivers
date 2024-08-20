@@ -28,12 +28,6 @@ impl DriverStatement for SqliteStatement<'_> {
     fn bind(&mut self, parameters: Parameters) -> Result<()> {
         let expected = self.inner.parameter_count();
         match parameters {
-            Parameters::None => {
-                if expected > 0 {
-                    return Err(Error::InvalidParameterCount { expected, actual: 0 }.into());
-                }
-                Ok(())
-            }
             Parameters::Positional(values) => {
                 if expected != values.len() {
                     return Err(Error::InvalidParameterCount { expected, actual: values.len() }.into());

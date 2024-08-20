@@ -109,13 +109,13 @@ impl ColumnIndex for &str {
 
 #[cfg(test)]
 mod tests {
-    use crate::{connection::Connection, NO_PARAM};
+    use crate::connection::Connection;
 
     #[test]
     fn test_query_rows() {
         let conn = Connection::open("mock://").unwrap();
         let mut stmt = conn.prepare("SELECT 2").unwrap();
-        let mut rows = conn.query_rows(&mut stmt, NO_PARAM).unwrap();
+        let mut rows = conn.query_rows(&mut stmt, None).unwrap();
         assert_eq!(rows.next().unwrap().unwrap().get::<_, i32>(0), 1);
         let row = rows.next().unwrap().unwrap();
         assert!(!row.is_null(0));

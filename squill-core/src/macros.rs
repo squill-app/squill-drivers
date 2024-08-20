@@ -4,7 +4,7 @@ macro_rules! params {
         &[] as &[&dyn $crate::values::ToValue]
     };
     ($($param:expr),+ $(,)?) => {
-        $crate::parameters::Parameters::from_slice(&[$(&$param as &dyn $crate::values::ToValue),+] as &[&dyn $crate::values::ToValue])
+        Some($crate::parameters::Parameters::from_slice(&[$(&$param as &dyn $crate::values::ToValue),+] as &[&dyn $crate::values::ToValue]))
     };
 }
 
@@ -16,7 +16,13 @@ macro_rules! execute {
                 $rest.into(),
             )*
         ];
-        $conn.execute($command, $crate::parameters::Parameters::Positional(bind_parameters))
+        if bind_parameters.is_empty() {
+            $conn.execute($command, None)
+        }
+        else {
+            $conn.execute($command, Some($crate::parameters::Parameters::Positional(bind_parameters)))
+        }
+
     }};
 }
 

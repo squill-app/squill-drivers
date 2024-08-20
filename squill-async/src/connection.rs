@@ -97,7 +97,7 @@ impl Connection {
     pub fn execute<'c, 's, S: IntoStatement<'s>>(
         &'c self,
         command: S,
-        parameters: Parameters,
+        parameters: Option<Parameters>,
     ) -> BoxFuture<'s, Result<u64>>
     where
         'c: 's,
@@ -121,12 +121,10 @@ impl Connection {
     pub fn query<'conn>(
         &'conn self,
         statement: &mut Statement<'conn>,
-        parameters: Parameters,
+        parameters: Option<Parameters>,
     ) -> BoxFuture<'conn, Result<RecordBatchStream<'conn>>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) =
-            self.command_tx.send(Command::Query { handle: statement.handle, parameters: Some(parameters), tx })
-        {
+        if let Err(e) = self.command_tx.send(Command::Query { handle: statement.handle, parameters, tx }) {
             return Box::pin(err::<RecordBatchStream<'conn>, Error>(Error::DriverError { error: e.into() }));
         }
         Box::pin(async move {
@@ -157,18 +155,43 @@ impl Connection {
 }
 
 pub(crate) enum Command {
-    Bind { handle: Handle, parameters: Parameters, tx: oneshot::Sender<driver::Result<()>> },
-    Close { tx: oneshot::Sender<driver::Result<()>> },
-    DropStatement { handle: Handle },
+    Bind {
+        handle: Handle,
+        parameters: Parameters,
+        tx: oneshot::Sender<driver::Result<()>>,
+    },
+    Close {
+        tx: oneshot::Sender<driver::Result<()>>,
+    },
+    DropStatement {
+        handle: Handle,
+    },
     DropCursor,
-    Execute { statement: String, parameters: Parameters, tx: oneshot::Sender<driver::Result<u64>> },
-    ExecutePreparedStatement { handle: Handle, parameters: Parameters, tx: oneshot::Sender<driver::Result<u64>> },
-    FetchCursor { tx: tokio::sync::mpsc::Sender<driver::Result<Option<RecordBatch>>> },
-    PrepareStatement { statement: String, tx: oneshot::Sender<driver::Result<Handle>> },
-    Query { handle: Handle, parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<()>> },
+    Execute {
+        statement: String,
+        parameters: Option<Parameters>,
+        tx: oneshot::Sender<driver::Result<u64>>,
+    },
+    ExecutePreparedStatement {
+        handle: Handle,
+        parameters: Option<Parameters>,
+        tx: oneshot::Sender<driver::Result<u64>>,
+    },
+    FetchCursor {
+        tx: tokio::sync::mpsc::Sender<driver::Result<Option<RecordBatch>>>,
+    },
+    PrepareStatement {
+        statement: String,
+        tx: oneshot::Sender<driver::Result<Handle>>,
+    },
+    Query {
+        handle: Handle,
+        parameters: Option<Parameters>,
+        tx: oneshot::Sender<driver::Result<()>>,
+    },
 }
 
-macro_rules! blocking_send_response {
+macro_rules! blocking_send_response_and_break_on_error {
     ($tx:expr, $value:expr) => {
         if $tx.blocking_send($value).is_err() {
             error!("Channel communication failed while sending statement fetching response.");
@@ -177,7 +200,7 @@ macro_rules! blocking_send_response {
     };
 }
 
-macro_rules! send_response {
+macro_rules! send_response_and_break_on_error {
     ($tx:expr, $value:expr) => {
         if $tx.send($value).is_err() {
             error!("Channel communication failed while sending command response.");
@@ -195,9 +218,9 @@ impl Connection {
             match command {
                 Ok(Command::Bind { handle, parameters, tx }) => {
                     if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        send_response!(tx, stmt.bind(parameters));
+                        send_response_and_break_on_error!(tx, stmt.bind(parameters));
                     } else {
-                        send_response!(tx, Err("Invalid statement handle".into()));
+                        send_response_and_break_on_error!(tx, Err("Invalid statement handle".into()));
                     }
                 }
 
@@ -209,7 +232,7 @@ impl Connection {
                     let result = inner_conn.close();
                     // We don't care if the receiver is closed, because we are closing the
                     // connection anyway.
-                    send_response!(tx, result);
+                    send_response_and_break_on_error!(tx, result);
                     // Once the connection is closed, we need to break the loop and exit the thread.
                     break;
                 }
@@ -232,96 +255,92 @@ impl Connection {
                 // prepared statement because it avoids the overhead of sending back the handle to
                 // the prepared statement and then run a second command to execute it.
                 Ok(Command::Execute { statement, parameters, tx }) => match inner_conn.prepare(&statement) {
-                    Ok(mut stmt) => match stmt.bind(parameters) {
-                        Ok(_) => {
-                            send_response!(tx, stmt.execute());
-                        }
-                        Err(e) => {
-                            send_response!(tx, Err(e));
-                        }
+                    Ok(mut stmt) => match parameters {
+                        Some(parameters) => match stmt.bind(parameters) {
+                            Ok(_) => send_response_and_break_on_error!(tx, stmt.execute()),
+                            Err(e) => send_response_and_break_on_error!(tx, Err(e)),
+                        },
+                        None => send_response_and_break_on_error!(tx, stmt.execute()),
                     },
                     Err(e) => {
-                        send_response!(tx, Err(e));
+                        send_response_and_break_on_error!(tx, Err(e));
                     }
                 },
 
                 // Execute a prepared statement.
                 Ok(Command::ExecutePreparedStatement { handle, parameters, tx }) => {
                     if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        match stmt.bind(parameters) {
-                            Ok(_) => {
-                                send_response!(tx, stmt.execute());
-                            }
-                            Err(e) => {
-                                send_response!(tx, Err(e));
-                            }
+                        match parameters {
+                            Some(parameters) => match stmt.bind(parameters) {
+                                Ok(_) => send_response_and_break_on_error!(tx, stmt.execute()),
+                                Err(e) => send_response_and_break_on_error!(tx, Err(e)),
+                            },
+                            None => send_response_and_break_on_error!(tx, stmt.execute()),
                         }
                     } else {
-                        send_response!(tx, Err("Invalid statement handle".into()));
+                        send_response_and_break_on_error!(tx, Err("Invalid statement handle".into()));
                     }
                 }
 
                 Ok(Command::Query { handle, parameters, tx }) => {
                     if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        // FIXME: parameters should support None
-                        match stmt.bind(parameters.unwrap()) {
-                            Ok(_) => match stmt.query() {
-                                Ok(mut rows) => {
-                                    send_response!(tx, Ok(()));
-                                    loop {
-                                        match command_rx.recv() {
-                                            Ok(Command::DropCursor) => {
-                                                // The cursor is dropped, so we need to break the cursor loop.
-                                                break;
-                                            }
-                                            Ok(Command::FetchCursor { tx }) => {
-                                                match rows.next() {
-                                                    Some(Ok(batch)) => {
-                                                        blocking_send_response!(tx, Ok(Some(batch)));
-                                                    }
-                                                    Some(Err(e)) => {
-                                                        // An error occurred while fetching the next record batch.
-                                                        // This is a fatal error for this query and we are not expecting to
-                                                        // receive any more fetch commands for it but still we need to wait
-                                                        // for the DropCursor command to break the loop.
-                                                        error!("Error getting next record batch: {:?}", e);
-                                                        blocking_send_response!(tx, Err(e));
-                                                    }
-                                                    None => {
-                                                        // The iterator is exhausted.
-                                                        // We need to break the loop to make the connection available
-                                                        // for other operations.
-                                                        blocking_send_response!(tx, Ok(None));
-                                                        break;
-                                                    }
+                        if let Some(parameters) = parameters {
+                            if let Err(e) = stmt.bind(parameters) {
+                                send_response_and_break_on_error!(tx, Err(e));
+                                continue;
+                            }
+                        }
+                        match stmt.query() {
+                            Ok(mut rows) => {
+                                send_response_and_break_on_error!(tx, Ok(()));
+                                loop {
+                                    match command_rx.recv() {
+                                        Ok(Command::DropCursor) => {
+                                            // The cursor is dropped, so we need to break the cursor loop.
+                                            break;
+                                        }
+                                        Ok(Command::FetchCursor { tx }) => {
+                                            match rows.next() {
+                                                Some(Ok(batch)) => {
+                                                    blocking_send_response_and_break_on_error!(tx, Ok(Some(batch)));
+                                                }
+                                                Some(Err(e)) => {
+                                                    // An error occurred while fetching the next record batch.
+                                                    // This is a fatal error for this query and we are not expecting to
+                                                    // receive any more fetch commands for it but still we need to wait
+                                                    // for the DropCursor command to break the loop.
+                                                    error!("Error getting next record batch: {:?}", e);
+                                                    blocking_send_response_and_break_on_error!(tx, Err(e));
+                                                }
+                                                None => {
+                                                    // The iterator is exhausted.
+                                                    // We need to break the loop to make the connection available
+                                                    // for other operations.
+                                                    blocking_send_response_and_break_on_error!(tx, Ok(None));
+                                                    break;
                                                 }
                                             }
-                                            Err(e) => {
-                                                error!("Channel communication error: {:?}", e);
-                                                return;
-                                            }
-                                            _ => {
-                                                // We are not expecting any other command while fetching rows.
-                                                // If this occurs, this is most likely because an iterator on a query
-                                                // as not been exhausted and not dropped before trying to re-use the
-                                                // connection for another operation. This is a programming error and the
-                                                // code should be fixed by either exhausting the iterator or dropping it.
-                                                error!("Unexpected command while fetching rows.");
-                                                return;
-                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Channel communication error: {:?}", e);
+                                            return;
+                                        }
+                                        _ => {
+                                            // We are not expecting any other command while fetching rows.
+                                            // If this occurs, this is most likely because an iterator on a query
+                                            // as not been exhausted and not dropped before trying to re-use the
+                                            // connection for another operation. This is a programming error and the
+                                            // code should be fixed by either exhausting the iterator or dropping it.
+                                            error!("Unexpected command while fetching rows.");
+                                            return;
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    send_response!(tx, Err(e));
-                                }
-                            },
+                            }
                             Err(e) => {
-                                send_response!(tx, Err(e));
+                                send_response_and_break_on_error!(tx, Err(e));
                             }
                         }
-                    } else {
-                        send_response!(tx, Err("Invalid statement handle".into()));
                     }
                 }
 
@@ -337,17 +356,17 @@ impl Connection {
                 Ok(Command::PrepareStatement { statement, tx }) => match inner_conn.prepare(&statement) {
                     Ok(stmt) => {
                         prepared_statements.insert(next_handle, stmt);
-                        send_response!(tx, Ok(next_handle));
+                        send_response_and_break_on_error!(tx, Ok(next_handle));
                         next_handle += 1;
                     }
                     Err(e) => {
-                        send_response!(tx, Err(e));
+                        send_response_and_break_on_error!(tx, Err(e));
                     }
                 },
                 Ok(Command::FetchCursor { tx }) => {
                     // This command is not expected at this point. It means the developer is trying to use an iterator
                     // that is already exhausted.
-                    blocking_send_response!(tx, Ok(None));
+                    blocking_send_response_and_break_on_error!(tx, Ok(None));
                     break;
                 }
                 Ok(Command::DropCursor) => {
@@ -368,7 +387,7 @@ impl Connection {
 mod tests {
     use crate::Connection;
     use futures::StreamExt;
-    use squill_core::{params, NO_PARAM};
+    use squill_core::params;
 
     #[tokio::test]
     async fn test_open() {
@@ -388,13 +407,13 @@ mod tests {
         let conn = Connection::open("mock://").await.unwrap();
 
         // Using string statement
-        assert_eq!(conn.execute("INSERT 1", NO_PARAM).await.unwrap(), 1);
-        assert!(conn.execute("SELECT 1", NO_PARAM).await.is_err()); // SELECT is not allowed
+        assert_eq!(conn.execute("INSERT 1", None).await.unwrap(), 1);
+        assert!(conn.execute("SELECT 1", None).await.is_err()); // SELECT is not allowed
         assert!(conn.execute("INSERT 1", params!(1)).await.is_err()); // bind parameters mismatch
 
         // Using prepared statement
-        assert!(conn.execute(conn.prepare("INSERT 1").await.unwrap(), NO_PARAM).await.is_ok());
-        assert!(conn.execute(conn.prepare("SELECT 1").await.unwrap(), NO_PARAM).await.is_err());
+        assert!(conn.execute(conn.prepare("INSERT 1").await.unwrap(), None).await.is_ok());
+        assert!(conn.execute(conn.prepare("SELECT 1").await.unwrap(), None).await.is_err());
         assert!(conn.execute(conn.prepare("INSERT 1").await.unwrap(), params!(1)).await.is_err());
     }
 
@@ -404,24 +423,24 @@ mod tests {
 
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
         assert!(conn.query(&mut stmt, params!("hello")).await.is_err());
-        let mut iter = conn.query(&mut stmt, NO_PARAM).await.unwrap();
+        let mut iter = conn.query(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
         assert!(iter.next().await.is_none());
         drop(stmt);
 
         let mut stmt = conn.prepare("INSERT 1").await.unwrap();
-        assert!(conn.query(&mut stmt, NO_PARAM).await.is_err());
+        assert!(conn.query(&mut stmt, None).await.is_err());
         drop(stmt);
 
         // Testing not exhausting the iterator, if the iterator was not dropped
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = conn.query(&mut stmt, NO_PARAM).await.unwrap();
+        let mut iter = conn.query(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
         drop(iter);
         drop(stmt);
 
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = conn.query(&mut stmt, NO_PARAM).await.unwrap();
+        let mut iter = conn.query(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
     }
 }

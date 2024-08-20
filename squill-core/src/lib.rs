@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-use parameters::Parameters;
-
 pub mod connection;
 pub mod decode;
 pub mod driver;
@@ -26,6 +24,3 @@ pub type Error = error::Error;
 
 /// A specialized `Result` type for this library.
 pub type Result<T> = std::result::Result<T, Error>;
-
-/// A helper constant for no parameters when binding a statement.
-pub const NO_PARAM: Parameters = Parameters::None;
