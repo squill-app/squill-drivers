@@ -4,19 +4,19 @@
 [![codecov](https://img.shields.io/codecov/c/gh/squill-app/squill-drivers/settings/badge.svg?token=MZQU5H90OW&style=for-the-badge&logo=codecov)](https://codecov.io/github/squill-app/squill-drivers)
 
 The aim of this crate is to provide a unified interface for various database systems. Each database system is accessed
-through a simple synchronous interface called `driver` but this crate also provides an asynchronous interface built on
-top of the those drivers.
+through a minimalist low-level blocking trait called `driver` and high-level blocking and non-blocking interfaces built
+on top of that trait are exposed to the developers.
 
 In a nutshell, here are the main features provided by this crate:
 
-- **Connections are created via a factory:**
+- **Connections are created via a URI:**
 
   ```rust
   let conn = Connection::open("duckdb://:memory:")?;
   ```
 
-  The factory returns a `Box<dyn DriverConnection>` which then can be used to access the database with the same
-  interface regardless of the database system.
+  Once a connection opened, it can be used to access the database with the same interface regardless of the database
+  system.
 
 - **Execution via `execute` method for statement that don't return data:**
 
