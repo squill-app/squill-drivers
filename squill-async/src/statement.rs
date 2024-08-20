@@ -13,8 +13,12 @@ pub struct Statement<'c> {
 }
 
 impl Statement<'_> {
-    pub fn bind(&self, _parameters: Parameters) -> BoxFuture<'_, Result<()>> {
-        todo!("Implement bind method")
+    pub fn bind(&self, parameters: Parameters) -> BoxFuture<'_, Result<()>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::Bind { handle: self.handle, parameters, tx }) {
+            return Box::pin(err::<(), Error>(Error::DriverError { error: e.into() }));
+        }
+        await_on!(rx)
     }
 
     pub fn execute(&self, parameters: Parameters) -> BoxFuture<'_, Result<u64>> {
@@ -38,24 +42,24 @@ impl Drop for Statement<'_> {
 }
 
 /// A trait to allow either a string or a statement to be used in a method.
-pub trait EitherStatement<'s> {
-    fn either_statement(self) -> Either<String, Statement<'s>>;
+pub trait IntoStatement<'s> {
+    fn into_statement(self) -> Either<String, Statement<'s>>;
 }
 
-impl<'s> EitherStatement<'s> for &str {
-    fn either_statement(self) -> Either<String, Statement<'s>> {
+impl<'s> IntoStatement<'s> for &str {
+    fn into_statement(self) -> Either<String, Statement<'s>> {
         Either::Left(self.to_string())
     }
 }
 
-impl<'s> EitherStatement<'s> for String {
-    fn either_statement(self) -> Either<String, Statement<'s>> {
+impl<'s> IntoStatement<'s> for String {
+    fn into_statement(self) -> Either<String, Statement<'s>> {
         Either::Left(self)
     }
 }
 
-impl<'s> EitherStatement<'s> for Statement<'s> {
-    fn either_statement(self) -> Either<String, Statement<'s>> {
+impl<'s> IntoStatement<'s> for Statement<'s> {
+    fn into_statement(self) -> Either<String, Statement<'s>> {
         Either::Right(self)
     }
 }
@@ -68,8 +72,8 @@ mod tests {
     async fn test_either_statement() {
         let conn = crate::Connection::open("mock:://").await.unwrap();
 
-        assert!("SELECT 1".either_statement().is_left());
-        assert!(String::from("SELECT 1").either_statement().is_left());
-        assert!(conn.prepare("SELECT 1").await.unwrap().either_statement().is_right());
+        assert!("SELECT 1".into_statement().is_left());
+        assert!(String::from("SELECT 1").into_statement().is_left());
+        assert!(conn.prepare("SELECT 1").await.unwrap().into_statement().is_right());
     }
 }

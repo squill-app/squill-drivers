@@ -7,7 +7,7 @@ mod statement;
 mod values;
 
 /// The name of the driver for DuckDB.
-pub const DRIVER_DUCKDB: &str = "duckdb";
+pub const DRIVER_NAME: &str = "duckdb";
 
 /// The path in a URI for in-memory databases.
 pub const IN_MEMORY_URI_PATH: &str = "/:memory:";

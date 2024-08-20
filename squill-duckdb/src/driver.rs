@@ -3,11 +3,11 @@ use squill_core::driver::{DriverConnection, DriverStatement, Result};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::{DuckDB, DRIVER_DUCKDB};
+use crate::{DuckDB, DRIVER_NAME};
 
 impl DriverConnection for DuckDB {
     fn driver_name(&self) -> &str {
-        DRIVER_DUCKDB
+        DRIVER_NAME
     }
 
     fn prepare<'c: 's, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {

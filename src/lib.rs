@@ -14,7 +14,9 @@
 //! * [`squill-async`][squill_async] - asynchronous adapter for squill drivers
 
 pub use squill_core::connection::Connection;
+pub use squill_core::factory::Factory;
 pub use squill_core::parameters::Parameters;
+pub use squill_core::parameters::NO_PARAMS;
 pub use squill_core::rows::Row;
 pub use squill_core::rows::Rows;
 pub use squill_core::statement::Statement;
@@ -31,8 +33,14 @@ pub mod futures {
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite {
+    pub use squill_sqlite::DRIVER_NAME;
     pub use squill_sqlite::IN_MEMORY_SPECIAL_FILENAME;
     pub use squill_sqlite::IN_MEMORY_URI;
+}
+
+#[cfg(feature = "duckdb")]
+pub mod duckdb {
+    pub use squill_duckdb::DRIVER_NAME;
 }
 
 pub fn register_drivers() {

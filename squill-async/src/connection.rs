@@ -10,7 +10,7 @@ use std::thread;
 use tokio::sync::oneshot;
 use tracing::error;
 
-use crate::statement::{EitherStatement, Statement};
+use crate::statement::{IntoStatement, Statement};
 use crate::RecordBatchStream;
 
 /// An handle to an object owned by the connection's thread.
@@ -94,7 +94,7 @@ impl Connection {
         })
     }
 
-    pub fn execute<'c, 's, S: EitherStatement<'s>>(
+    pub fn execute<'c, 's, S: IntoStatement<'s>>(
         &'c self,
         command: S,
         parameters: Parameters,
@@ -102,9 +102,9 @@ impl Connection {
     where
         'c: 's,
     {
-        let either_statement = command.either_statement();
-        if either_statement.is_left() {
-            let string_command = either_statement.left().unwrap();
+        let either = command.into_statement();
+        if either.is_left() {
+            let string_command = either.left().unwrap();
             let (tx, rx) = oneshot::channel();
             if let Err(e) = self.command_tx.send(Command::Execute { statement: string_command, parameters, tx }) {
                 return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
@@ -112,7 +112,7 @@ impl Connection {
             await_on!(rx)
         } else {
             Box::pin(async move {
-                let statement = either_statement.right().unwrap();
+                let statement = either.right().unwrap();
                 statement.execute(parameters).await
             })
         }
@@ -124,7 +124,9 @@ impl Connection {
         parameters: Parameters,
     ) -> BoxFuture<'conn, Result<RecordBatchStream<'conn>>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Query { handle: statement.handle, parameters, tx }) {
+        if let Err(e) =
+            self.command_tx.send(Command::Query { handle: statement.handle, parameters: Some(parameters), tx })
+        {
             return Box::pin(err::<RecordBatchStream<'conn>, Error>(Error::DriverError { error: e.into() }));
         }
         Box::pin(async move {
@@ -155,6 +157,7 @@ impl Connection {
 }
 
 pub(crate) enum Command {
+    Bind { handle: Handle, parameters: Parameters, tx: oneshot::Sender<driver::Result<()>> },
     Close { tx: oneshot::Sender<driver::Result<()>> },
     DropStatement { handle: Handle },
     DropCursor,
@@ -162,7 +165,7 @@ pub(crate) enum Command {
     ExecutePreparedStatement { handle: Handle, parameters: Parameters, tx: oneshot::Sender<driver::Result<u64>> },
     FetchCursor { tx: tokio::sync::mpsc::Sender<driver::Result<Option<RecordBatch>>> },
     PrepareStatement { statement: String, tx: oneshot::Sender<driver::Result<Handle>> },
-    Query { handle: Handle, parameters: Parameters, tx: oneshot::Sender<driver::Result<()>> },
+    Query { handle: Handle, parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<()>> },
 }
 
 macro_rules! blocking_send_response {
@@ -190,6 +193,14 @@ impl Connection {
         loop {
             let command = command_rx.recv();
             match command {
+                Ok(Command::Bind { handle, parameters, tx }) => {
+                    if let Some(stmt) = prepared_statements.get_mut(&handle) {
+                        send_response!(tx, stmt.bind(parameters));
+                    } else {
+                        send_response!(tx, Err("Invalid statement handle".into()));
+                    }
+                }
+
                 //
                 // Close the connection.
                 //
@@ -252,7 +263,8 @@ impl Connection {
 
                 Ok(Command::Query { handle, parameters, tx }) => {
                     if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        match stmt.bind(parameters) {
+                        // FIXME: parameters should support None
+                        match stmt.bind(parameters.unwrap()) {
                             Ok(_) => match stmt.query() {
                                 Ok(mut rows) => {
                                     send_response!(tx, Ok(()));
