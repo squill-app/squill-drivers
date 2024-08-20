@@ -29,6 +29,25 @@ macro_rules! await_on {
     };
 }
 
+// The `Connection` struct is a non-blocking version of the `squill_core::connection::Connection`.
+//
+// The async version of the connection is based on a thread that runs the blocking operations and a command channel
+// that allows sending commands to the thread.
+//
+// The thread is spawned when the connection is opened and runs a loop that waits for commands on the command channel.
+// The commands are executed by the thread and the results are sent back to the caller through the command channel.
+// The thread is stopped when the connection is closed of if any error occurs while trying to send a response back to
+// the caller (e.g. the receiver is closed) and so no further commands can be executed on that connection.
+//
+// The blocking `Connection` and `Statement` objects owned by the thread and never cross the thread boundary, when a new
+// `Statement` is created, a handle (i64) to the statement is sent back to the caller and the caller uses the handle to
+// identify the statement when sending commands to the thread.
+//
+// Most of the methods of the `Connection` and `Statement` structs are expecting a the mutable reference of themselves
+// (`&mut self`), this is not a requirement of the async version of the connection but a design choice to avoid an
+// inconstancy between the blocking and non-blocking versions of the library.
+
+/// A non-blocking connection to a data source.
 pub struct Connection {
     pub(crate) command_tx: crossbeam_channel::Sender<Command>,
 }
@@ -85,9 +104,7 @@ impl Connection {
         }
         Box::pin(async move {
             match rx.await {
-                Ok(Ok(handle)) => {
-                    Ok(Statement { handle, command_tx: self.command_tx.clone(), phantom: std::marker::PhantomData })
-                }
+                Ok(Ok(handle)) => Ok(Statement::new(handle, self.command_tx.clone())),
                 Ok(Err(e)) => Err(Error::DriverError { error: e }),
                 Err(e) => Err(Error::InternalError { error: e.into() }),
             }
@@ -112,13 +129,13 @@ impl Connection {
             await_on!(rx)
         } else {
             Box::pin(async move {
-                let statement = either.right().unwrap();
+                let mut statement = either.right().unwrap();
                 statement.execute(parameters).await
             })
         }
     }
 
-    pub fn query<'conn>(
+    pub fn query_arrow<'conn>(
         &'conn self,
         statement: &mut Statement<'conn>,
         parameters: Option<Parameters>,
@@ -129,28 +146,11 @@ impl Connection {
         }
         Box::pin(async move {
             match rx.await {
-                Ok(Ok(())) => Ok(RecordBatchStream::new(self)),
+                Ok(Ok(())) => Ok(RecordBatchStream::new(self.command_tx.clone())),
                 Ok(Err(error)) => Err(Error::DriverError { error }),
                 Err(error) => Err(Error::DriverError { error: error.into() }),
             }
         })
-    }
-
-    pub(crate) fn fetch_cursor(
-        &self,
-        tx: tokio::sync::mpsc::Sender<driver::Result<Option<RecordBatch>>>,
-    ) -> Result<()> {
-        if let Err(e) = self.command_tx.send(Command::FetchCursor { tx }) {
-            return Err(Error::InternalError { error: e.into() });
-        }
-        Ok(())
-    }
-
-    pub(crate) fn drop_cursor(&self) -> Result<()> {
-        if let Err(e) = self.command_tx.send(Command::DropCursor) {
-            return Err(Error::DriverError { error: e.into() });
-        }
-        Ok(())
     }
 }
 
@@ -403,6 +403,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bind() {
+        let conn = Connection::open("mock://").await.unwrap();
+        let mut stmt = conn.prepare("SELECT ?").await.unwrap();
+        assert!(stmt.bind(params!(1).unwrap()).await.is_ok());
+        assert!(stmt.bind(params!(1, 2).unwrap()).await.is_err());
+    }
+
+    #[tokio::test]
     async fn test_execute() {
         let conn = Connection::open("mock://").await.unwrap();
 
@@ -422,25 +430,34 @@ mod tests {
         let conn = Connection::open("mock://").await.unwrap();
 
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        assert!(conn.query(&mut stmt, params!("hello")).await.is_err());
-        let mut iter = conn.query(&mut stmt, None).await.unwrap();
+        assert!(conn.query_arrow(&mut stmt, params!("hello")).await.is_err());
+        let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
         assert!(iter.next().await.is_none());
         drop(stmt);
 
         let mut stmt = conn.prepare("INSERT 1").await.unwrap();
-        assert!(conn.query(&mut stmt, None).await.is_err());
+        assert!(conn.query_arrow(&mut stmt, None).await.is_err());
         drop(stmt);
 
         // Testing not exhausting the iterator, if the iterator was not dropped
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = conn.query(&mut stmt, None).await.unwrap();
+        let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
         drop(iter);
         drop(stmt);
 
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = conn.query(&mut stmt, None).await.unwrap();
+        let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
+        drop(iter);
+        drop(stmt);
+
+        // Test using Statement::query
+        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
+        let mut iter = stmt.query().await.unwrap();
+        assert!(iter.next().await.is_some());
+        drop(iter);
+        drop(stmt);
     }
 }

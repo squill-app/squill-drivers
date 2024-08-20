@@ -6,10 +6,6 @@ use crate::statement::{IntoStatement, Statement};
 use crate::{Error, Result};
 use arrow_array::RecordBatch;
 
-pub struct Connection {
-    inner: Box<dyn DriverConnection>,
-}
-
 /// A connection to a data source.
 ///
 /// ```rust,ignore
@@ -22,8 +18,11 @@ pub struct Connection {
 ///
 /// let stmt = conn.prepare("SELECT * FROM employee")?;
 /// let rows = query!(stmt, 1, "Alice");
-///
 /// ```
+pub struct Connection {
+    inner: Box<dyn DriverConnection>,
+}
+
 impl Connection {
     pub fn open(uri: &str) -> Result<Self> {
         let inner = Factory::open(uri)?;

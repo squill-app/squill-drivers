@@ -1,3 +1,5 @@
+use crate::connection::Command;
+use arrow_array::RecordBatch;
 use futures::Stream;
 use squill_core::driver;
 use squill_core::Error;
@@ -5,19 +7,32 @@ use squill_core::Result;
 use std::pin::Pin;
 use std::task::Poll;
 
-use crate::Connection;
-
 pub struct RecordBatchStream<'conn> {
     command_sent: bool,
+    command_tx: crossbeam_channel::Sender<Command>,
     poll_tx: tokio::sync::mpsc::Sender<driver::Result<Option<arrow_array::RecordBatch>>>,
     poll_rx: tokio::sync::mpsc::Receiver<driver::Result<Option<arrow_array::RecordBatch>>>,
-    conn: &'conn Connection,
+    phantom: std::marker::PhantomData<&'conn ()>,
 }
 
 impl<'conn> RecordBatchStream<'conn> {
-    pub fn new(conn: &'conn Connection) -> Self {
+    pub(crate) fn new(command_tx: crossbeam_channel::Sender<Command>) -> Self {
         let (poll_tx, poll_rx) = tokio::sync::mpsc::channel(1);
-        Self { command_sent: false, poll_tx, poll_rx, conn }
+        Self { command_sent: false, poll_tx, poll_rx, command_tx, phantom: std::marker::PhantomData }
+    }
+
+    fn fetch_cursor(&self, tx: tokio::sync::mpsc::Sender<driver::Result<Option<RecordBatch>>>) -> Result<()> {
+        if let Err(e) = self.command_tx.send(Command::FetchCursor { tx }) {
+            return Err(Error::InternalError { error: e.into() });
+        }
+        Ok(())
+    }
+
+    fn drop_cursor(&self) -> Result<()> {
+        if let Err(e) = self.command_tx.send(Command::DropCursor) {
+            return Err(Error::DriverError { error: e.into() });
+        }
+        Ok(())
     }
 }
 
@@ -28,7 +43,7 @@ impl<'conn> Stream for RecordBatchStream<'conn> {
         let this = self.get_mut();
 
         if !this.command_sent {
-            this.conn.fetch_cursor(this.poll_tx.clone())?;
+            this.fetch_cursor(this.poll_tx.clone())?;
             this.command_sent = true;
         }
 
@@ -55,6 +70,6 @@ impl<'conn> Stream for RecordBatchStream<'conn> {
 /// to consume all the records, he can use the {{Drop}} trait on {{RecordBatchStream}} to release the cursor.
 impl Drop for RecordBatchStream<'_> {
     fn drop(&mut self) {
-        let _ = self.conn.drop_cursor();
+        let _ = self.drop_cursor();
     }
 }
