@@ -39,6 +39,7 @@ jobs:
             --ignore-not-existing \
             --ignore='target/*' \
             --ignore='benches/*' \
+            --ignore='examples/*' \
             --ignore='/*' \
             --binary-path ./target/debug/ \
             --excl-line='#\[derive' \
