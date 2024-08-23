@@ -91,14 +91,18 @@ impl MockDriverStatement {
                         }
                         _ => {
                             // Returns a single batch that contains `count` of records
-                            let values: Vec<Option<i32>> = (1..=count).map(|n| Some(n as i32)).collect();
+                            let ids: Vec<Option<i32>> = (1..=count).map(|n| Some(n as i32)).collect();
+                            let usernames: Vec<Option<String>> =
+                                (1..=count).map(|n| Some(format!("user{}", n))).collect();
                             let record_batch = RecordBatch::try_new(
-                                std::sync::Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
-                                    "col0",
-                                    arrow_schema::DataType::Int32,
-                                    true,
-                                )])),
-                                vec![std::sync::Arc::new(arrow_array::Int32Array::from(values))],
+                                std::sync::Arc::new(arrow_schema::Schema::new(vec![
+                                    arrow_schema::Field::new("id", arrow_schema::DataType::Int32, true),
+                                    arrow_schema::Field::new("username", arrow_schema::DataType::Utf8, true),
+                                ])),
+                                vec![
+                                    std::sync::Arc::new(arrow_array::Int32Array::from(ids)),
+                                    std::sync::Arc::new(arrow_array::StringArray::from(usernames)),
+                                ],
                             )
                             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>);
                             Ok(Box::new(std::iter::once(record_batch)))

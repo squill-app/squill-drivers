@@ -181,6 +181,31 @@ impl Connection {
         }
     }
 
+    /// Query a statement that is expected to return a single row and map it to a value.
+    ///
+    /// Returns `Ok(None)` if the query returned no rows.
+    /// If the query returns more than one row, the function will return an the first row and ignore the rest.
+    pub fn query_map_row<'conn, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>, F, T>(
+        &'conn self,
+        query: S,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> BoxFuture<'r, Result<Option<T>>>
+    where
+        'conn: 's,
+        F: FnOnce(Row) -> Result<T> + std::marker::Send + 'r,
+    {
+        match query.into() {
+            StatementRef::Str(s) => Box::pin(async move {
+                let mut statement = self.prepare(s).await?;
+                self.query_map_row_inner(&mut statement, parameters, mapping_fn).await
+            }),
+            StatementRef::Statement(statement) => {
+                Box::pin(async move { self.query_map_row_inner(statement, parameters, mapping_fn).await })
+            }
+        }
+    }
+
     // This method is used to avoid code duplication in the `query_row` method.
     async fn query_row_inner<'s, 'conn: 's>(
         &'conn self,
@@ -191,6 +216,23 @@ impl Connection {
         match rows.next().await {
             Some(Ok(row)) => Ok(Some(row)),
             Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
+    }
+
+    // This method is used to avoid code duplication in the `query_map_row` method.
+    async fn query_map_row_inner<'s, 'conn: 's, F, T>(
+        &'conn self,
+        statement: &'s mut Statement<'conn>,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> Result<Option<T>>
+    where
+        F: FnOnce(Row) -> Result<T> + std::marker::Send,
+    {
+        let row = self.query_row_inner(statement, parameters).await?;
+        match row {
+            Some(row) => Ok(Some(mapping_fn(row)?)),
             None => Ok(None),
         }
     }
@@ -548,6 +590,44 @@ mod tests {
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
         assert_eq!(conn.query_row(&mut stmt, None).await.unwrap().unwrap().get::<_, i32>(0), 1);
         assert_eq!(conn.query_row(&mut stmt, None).await.unwrap().unwrap().get::<_, i32>(0), 1);
+    }
+
+    #[tokio::test]
+    async fn test_connection_query_map_row() {
+        struct TestUser {
+            id: i32,
+            username: String,
+        }
+
+        let conn = Connection::open("mock://").await.unwrap();
+
+        // some rows
+        let user = conn
+            .query_map_row("SELECT 1", None, |row| {
+                Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(user.id, 1);
+        assert_eq!(user.username, "user1");
+
+        // no rows
+        assert!(conn
+            .query_map_row("SELECT 0", None, |row| {
+                Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+            })
+            .await
+            .unwrap()
+            .is_none());
+
+        // error
+        assert!(conn
+            .query_map_row("SELECT -1", None, |row| {
+                Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+            })
+            .await
+            .is_err());
     }
 
     #[tokio::test]

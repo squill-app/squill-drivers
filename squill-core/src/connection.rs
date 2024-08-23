@@ -101,6 +101,48 @@ impl Connection {
         }
     }
 
+    /// Query a statement that is expected to return a single row and map it to a value.
+    ///
+    /// Returns `Ok(None)` if the query returned no rows.
+    /// If the query returns more than one row, the function will return an the first row and ignore the rest.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use squill_core::connection::Connection;
+    /// struct TestUser {
+    ///     id: i32,
+    ///     username: String,
+    /// }
+    ///
+    /// let conn = Connection::open("mock://").unwrap();
+    ///
+    /// // some rows
+    /// let user = conn
+    ///     .query_map_row("SELECT 1", None, |row| {
+    ///         Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+    ///     })
+    ///     .unwrap()
+    ///     .unwrap();
+    /// assert_eq!(user.id, 1);
+    /// assert_eq!(user.username, "user1");
+    /// ```
+    pub fn query_map_row<'c, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>, F, T>(
+        &'c self,
+        command: S,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> Result<Option<T>>
+    where
+        'c: 's,
+        F: FnOnce(Row) -> Result<T>,
+    {
+        match self.query_row(command, parameters)? {
+            Some(row) => Ok(Some(mapping_fn(row)?)),
+            None => Ok(None),
+        }
+    }
+
     /// Query a statement that is expected to return a single [Row].
     ///
     /// Returns `Ok(None)` if the query returned no rows.
@@ -161,6 +203,37 @@ mod tests {
         let conn = Connection::open("mock://").unwrap();
         assert!(conn.prepare("XINSERT").is_err());
         assert!(conn.prepare("SELECT 1").is_ok());
+    }
+
+    #[test]
+    fn test_connection_query_map_row() {
+        struct TestUser {
+            id: i32,
+            username: String,
+        }
+
+        let conn = Connection::open("mock://").unwrap();
+
+        // some rows
+        let user = conn
+            .query_map_row("SELECT 1", None, |row| {
+                Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(user.id, 1);
+        assert_eq!(user.username, "user1");
+
+        // no rows
+        assert!(conn
+            .query_map_row("SELECT 0", None, |row| Ok(TestUser { id: row.get(0), username: "".to_string() }))
+            .unwrap()
+            .is_none());
+
+        // error
+        assert!(conn
+            .query_map_row("SELECT X", None, |row| Ok(TestUser { id: row.get(0), username: "".to_string() }))
+            .is_err());
     }
 
     #[test]

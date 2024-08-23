@@ -137,7 +137,8 @@ mod tests {
         assert_eq!(rows.next().unwrap().unwrap().get::<_, i32>(0), 1);
         let row = rows.next().unwrap().unwrap();
         assert!(!row.is_null(0));
-        assert_eq!(row.get::<&str, i32>("col0"), 2);
+        assert_eq!(row.get::<&str, i32>("id"), 2);
+        assert_eq!(row.get::<&str, String>("username"), "user2");
         assert!(rows.next().is_none());
     }
 }
