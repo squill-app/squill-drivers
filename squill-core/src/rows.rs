@@ -43,7 +43,7 @@ impl Row {
     /// Check if the value of a column from its index is null.
     ///
     /// # Panics
-    /// Panics if the column index is out of bounds.
+    /// Panics if the column index is out of bounds (`usize` index) or not found (`&str` index).
     pub fn is_null<T: ColumnIndex>(&self, index: T) -> bool {
         match index.index(self.record_batch.schema()) {
             Ok(index) => decode::is_null(self.record_batch.column(index), self.index_in_batch),
@@ -56,12 +56,22 @@ impl Row {
     /// The index of the column can be either a 0-based index or the name of the column.
     ///
     /// # Panics
-    /// Panics if the column index is out of bounds or if the type is not the expected one.
+    /// Panics if the column index is out of bounds (`usize` index) or not found (`&str` index) or if the type is not
+    /// the expected one.
     pub fn get<I: ColumnIndex, T: Decode>(&self, index: I) -> T {
         match index.index(self.record_batch.schema()) {
             Ok(index) => T::decode(self.record_batch.column(index), self.index_in_batch),
             Err(e) => panic!("{}", e),
         }
+    }
+
+    /// Get a value from a column by its index.
+    ///
+    /// The index of the column can be either a 0-based index or the name of the column.
+    /// This method returns an error if the column index is out of bounds or if the type is not the expected one.
+    pub fn try_get<I: ColumnIndex, T: Decode>(&self, index: I) -> Result<T> {
+        let index = index.index(self.record_batch.schema())?;
+        T::try_decode(self.record_batch.column(index), self.index_in_batch)
     }
 }
 
@@ -127,7 +137,7 @@ impl ColumnIndex for &str {
 
 #[cfg(test)]
 mod tests {
-    use crate::connection::Connection;
+    use crate::{connection::Connection, Error};
 
     #[test]
     fn test_query_rows() {
@@ -140,5 +150,14 @@ mod tests {
         assert_eq!(row.get::<&str, i32>("id"), 2);
         assert_eq!(row.get::<&str, String>("username"), "user2");
         assert!(rows.next().is_none());
+    }
+
+    #[test]
+    fn test_try_get() {
+        let conn = Connection::open("mock://").unwrap();
+        let row = conn.query_row("SELECT 1", None).unwrap().unwrap();
+        assert_eq!(row.try_get::<_, i32>(0).unwrap(), 1);
+        assert!(matches!(row.try_get::<_, i64>(0), Err(Error::InvalidType { expected: _, actual: _ })));
+        assert!(matches!(row.try_get::<_, i32>(7), Err(Error::OutOfBounds { index: _ })));
     }
 }
