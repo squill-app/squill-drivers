@@ -135,7 +135,7 @@ impl Connection {
     ) -> Result<Option<T>>
     where
         'c: 's,
-        F: FnOnce(Row) -> Result<T>,
+        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>,
     {
         match self.query_row(command, parameters)? {
             Some(row) => Ok(Some(mapping_fn(row)?)),
@@ -230,9 +230,20 @@ mod tests {
             .unwrap()
             .is_none());
 
-        // error
+        // error by the query
         assert!(conn
             .query_map_row("SELECT X", None, |row| Ok(TestUser { id: row.get(0), username: "".to_string() }))
+            .is_err());
+
+        // error by the mapping function
+        assert!(conn
+            .query_map_row("SELECT 1", None, |row| {
+                if row.get::<_, i32>(0) == 2 {
+                    Ok(TestUser { id: 2, username: "user2".to_string() })
+                } else {
+                    Err("error".into())
+                }
+            })
             .is_err());
     }
 

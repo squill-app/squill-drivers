@@ -193,7 +193,7 @@ impl Connection {
     ) -> BoxFuture<'r, Result<Option<T>>>
     where
         'conn: 's,
-        F: FnOnce(Row) -> Result<T> + std::marker::Send + 'r,
+        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> + std::marker::Send + 'r,
     {
         match query.into() {
             StatementRef::Str(s) => Box::pin(async move {
@@ -228,7 +228,7 @@ impl Connection {
         mapping_fn: F,
     ) -> Result<Option<T>>
     where
-        F: FnOnce(Row) -> Result<T> + std::marker::Send,
+        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> + std::marker::Send,
     {
         let row = self.query_row_inner(statement, parameters).await?;
         match row {
@@ -621,10 +621,22 @@ mod tests {
             .unwrap()
             .is_none());
 
-        // error
+        // error by the driver
         assert!(conn
             .query_map_row("SELECT -1", None, |row| {
                 Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+            })
+            .await
+            .is_err());
+
+        // error by the mapping function
+        assert!(conn
+            .query_map_row("SELECT 1", None, |row| {
+                if row.get::<_, i32>(0) == 1 {
+                    Err("Error".into())
+                } else {
+                    Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+                }
             })
             .await
             .is_err());
