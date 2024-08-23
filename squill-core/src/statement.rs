@@ -1,4 +1,3 @@
-use crate::connection::Connection;
 use crate::driver::DriverStatement;
 use crate::parameters::Parameters;
 use crate::{Error, Result};
@@ -39,33 +38,43 @@ impl Statement<'_> {
     }
 }
 
-pub trait IntoStatement<'s> {
-    fn into_statement<'c: 's>(self, conn: &'c Connection) -> Result<Statement<'s>>;
+/// An enum that can be either a string or a mutable reference to a statement.
+///
+/// This enum is used to allow some functions to accept either a string or a mutable reference to a statement.
+///
+/// # Example
+/// ```rust
+/// # use squill_core::connection::Connection;
+/// # use squill_core::statement::{Statement, StatementRef};
+/// fn my_function<'r, 's: 'r, S: Into<StatementRef<'r, 's>>>(statement: S) -> &'r str {
+///     let statement_ref: StatementRef = statement.into();
+///     match statement_ref {
+///         StatementRef::Str(s) => s,
+///         StatementRef::Statement(_statement) => "statement",
+///     }
+/// }
+///
+/// let conn = Connection::open("mock://").unwrap();
+/// let mut statement = conn.prepare("SELECT 1").unwrap();
+/// assert_eq!(my_function("SELECT 1"), "SELECT 1");
+/// assert_eq!(my_function(&mut statement), "statement");
+/// ```
+pub enum StatementRef<'r, 's> {
+    Str(&'r str),
+    Statement(&'r mut Statement<'s>),
 }
 
-impl<'s> IntoStatement<'s> for &str {
-    fn into_statement<'c: 's>(self, conn: &'c Connection) -> Result<Statement<'s>> {
-        conn.prepare(self)
+/// Conversion of a [std::str] reference to [StatementRef].
+impl<'r, 's: 'r> From<&'s str> for StatementRef<'r, '_> {
+    fn from(s: &'s str) -> Self {
+        StatementRef::Str(s)
     }
 }
 
-impl<'s> IntoStatement<'s> for String {
-    fn into_statement<'c: 's>(self, conn: &'c Connection) -> Result<Statement<'s>> {
-        conn.prepare(self)
-    }
-}
-
-impl<'s> IntoStatement<'s> for Statement<'s> {
-    fn into_statement<'c: 's>(self, _conn: &'c Connection) -> Result<Statement<'s>> {
-        Ok(self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_statement() {
-        // todo!("Implement test_statement")
+/// Conversion of a [Statement] mutable reference to [StatementRef].
+/// Create a `StatementRef` from a mutable reference to a statement.
+impl<'r, 's> From<&'r mut Statement<'s>> for StatementRef<'r, 's> {
+    fn from(statement: &'r mut Statement<'s>) -> Self {
+        StatementRef::Statement(statement)
     }
 }

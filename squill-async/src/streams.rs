@@ -2,11 +2,14 @@ use crate::connection::Command;
 use arrow_array::RecordBatch;
 use futures::Stream;
 use squill_core::driver;
+use squill_core::rows::Row;
 use squill_core::Error;
 use squill_core::Result;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::Poll;
 
+/// A non-blocking stream of Arrow's record batches.
 pub struct RecordBatchStream<'conn> {
     command_sent: bool,
     command_tx: crossbeam_channel::Sender<Command>,
@@ -71,5 +74,55 @@ impl<'conn> Stream for RecordBatchStream<'conn> {
 impl Drop for RecordBatchStream<'_> {
     fn drop(&mut self) {
         let _ = self.drop_cursor();
+    }
+}
+
+/// A non-blocking stream of rows.
+pub struct RowStream<'i> {
+    // The iterator used to poll the RecordBatch.
+    iterator: RecordBatchStream<'i>,
+
+    // The last record batch that was polled.
+    last_record_batch: Option<Arc<RecordBatch>>,
+
+    // The index of the next row to poll in the last record batch.
+    index_in_batch: usize,
+}
+
+impl<'i> From<RecordBatchStream<'i>> for RowStream<'i> {
+    fn from(iterator: RecordBatchStream<'i>) -> Self {
+        RowStream { last_record_batch: None, iterator, index_in_batch: 0 }
+    }
+}
+
+impl<'i> Stream for RowStream<'i> {
+    type Item = Result<Row>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        if this.last_record_batch.is_none() {
+            // First call or we've exhausted the last batch.
+            this.last_record_batch = match Pin::new(&mut this.iterator).poll_next(cx) {
+                std::task::Poll::Ready(Some(Ok(record_batch))) => {
+                    this.index_in_batch = 0;
+                    Some(Arc::new(record_batch))
+                }
+                std::task::Poll::Ready(Some(Err(error))) => return std::task::Poll::Ready(Some(Err(error))),
+                std::task::Poll::Ready(None) => None,
+                std::task::Poll::Pending => return std::task::Poll::Pending,
+            }
+        }
+
+        match &this.last_record_batch {
+            None => std::task::Poll::Ready(None),
+            Some(last_record_batch) => {
+                let row = Row::new(last_record_batch.clone(), this.index_in_batch);
+                this.index_in_batch += 1;
+                if this.index_in_batch >= last_record_batch.num_rows() {
+                    this.last_record_batch = None;
+                }
+                std::task::Poll::Ready(Some(Ok(row)))
+            }
+        }
     }
 }

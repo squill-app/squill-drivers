@@ -1,17 +1,18 @@
+use crate::statement::{Statement, StatementRef};
+use crate::{RecordBatchStream, RowStream};
 use arrow_array::RecordBatch;
 use futures::future::{err, BoxFuture};
+use futures::StreamExt;
 use squill_core::driver;
 use squill_core::driver::{DriverConnection, DriverStatement};
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
+use squill_core::rows::Row;
 use squill_core::{Error, Result};
 use std::collections::HashMap;
 use std::thread;
 use tokio::sync::oneshot;
 use tracing::error;
-
-use crate::statement::{IntoStatement, Statement};
-use crate::RecordBatchStream;
 
 /// An handle to an object owned by the connection's thread.
 pub(crate) type Handle = u64;
@@ -111,38 +112,35 @@ impl Connection {
         })
     }
 
-    pub fn execute<'c, 's, S: IntoStatement<'s>>(
-        &'c self,
+    pub fn execute<'conn, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>>(
+        &'conn self,
         command: S,
         parameters: Option<Parameters>,
-    ) -> BoxFuture<'s, Result<u64>>
+    ) -> BoxFuture<'r, Result<u64>>
     where
-        'c: 's,
+        'conn: 's,
     {
-        let either = command.into_statement();
-        if either.is_left() {
-            let string_command = either.left().unwrap();
-            let (tx, rx) = oneshot::channel();
-            if let Err(e) = self.command_tx.send(Command::Execute { statement: string_command, parameters, tx }) {
-                return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
+        match command.into() {
+            StatementRef::Str(s) => {
+                let (tx, rx) = oneshot::channel();
+                let statement = s.to_string();
+                if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
+                    return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
+                }
+                await_on!(rx)
             }
-            await_on!(rx)
-        } else {
-            Box::pin(async move {
-                let mut statement = either.right().unwrap();
-                statement.execute(parameters).await
-            })
+            StatementRef::Statement(statement) => Box::pin(async move { statement.execute(parameters).await }),
         }
     }
 
-    pub fn query_arrow<'conn>(
+    pub fn query_arrow<'s, 'conn: 's>(
         &'conn self,
-        statement: &mut Statement<'conn>,
+        statement: &'s mut Statement<'conn>,
         parameters: Option<Parameters>,
-    ) -> BoxFuture<'conn, Result<RecordBatchStream<'conn>>> {
+    ) -> BoxFuture<'s, Result<RecordBatchStream<'s>>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.command_tx.send(Command::Query { handle: statement.handle, parameters, tx }) {
-            return Box::pin(err::<RecordBatchStream<'conn>, Error>(Error::DriverError { error: e.into() }));
+            return Box::pin(err::<RecordBatchStream<'s>, Error>(Error::DriverError { error: e.into() }));
         }
         Box::pin(async move {
             match rx.await {
@@ -151,6 +149,50 @@ impl Connection {
                 Err(error) => Err(Error::DriverError { error: error.into() }),
             }
         })
+    }
+
+    pub fn query_rows<'s, 'conn: 's>(
+        &'conn self,
+        statement: &'s mut Statement<'conn>,
+        parameters: Option<Parameters>,
+    ) -> BoxFuture<'s, Result<RowStream<'s>>> {
+        Box::pin(async move {
+            let stream = self.query_arrow(statement, parameters).await?;
+            Ok(RowStream::from(stream))
+        })
+    }
+
+    pub fn query_row<'conn, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>>(
+        &'conn self,
+        query: S,
+        parameters: Option<Parameters>,
+    ) -> BoxFuture<'r, Result<Option<Row>>>
+    where
+        'conn: 's,
+    {
+        match query.into() {
+            StatementRef::Str(s) => Box::pin(async move {
+                let mut statement = self.prepare(s).await?;
+                self.query_row_inner(&mut statement, parameters).await
+            }),
+            StatementRef::Statement(statement) => {
+                Box::pin(async move { self.query_row_inner(statement, parameters).await })
+            }
+        }
+    }
+
+    // This method is used to avoid code duplication in the `query_row` method.
+    async fn query_row_inner<'s, 'conn: 's>(
+        &'conn self,
+        statement: &'s mut Statement<'conn>,
+        parameters: Option<Parameters>,
+    ) -> Result<Option<Row>> {
+        let mut rows = self.query_rows(statement, parameters).await?;
+        match rows.next().await {
+            Some(Ok(row)) => Ok(Some(row)),
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
     }
 }
 
@@ -461,13 +503,55 @@ mod tests {
         assert!(conn.execute("INSERT 1", params!(1)).await.is_err()); // bind parameters mismatch
 
         // Using prepared statement
-        assert!(conn.execute(conn.prepare("INSERT 1").await.unwrap(), None).await.is_ok());
-        assert!(conn.execute(conn.prepare("SELECT 1").await.unwrap(), None).await.is_err());
-        assert!(conn.execute(conn.prepare("INSERT 1").await.unwrap(), params!(1)).await.is_err());
+        let mut stmt = conn.prepare("INSERT 1").await.unwrap();
+        assert!(conn.execute(&mut stmt, None).await.is_ok());
+        drop(stmt);
+
+        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
+        assert!(conn.execute(&mut stmt, None).await.is_err());
+        let mut stmt = conn.prepare("INSERT 1").await.unwrap();
+        assert!(conn.execute(&mut stmt, params!(1)).await.is_err());
     }
 
     #[tokio::test]
-    async fn test_query() {
+    async fn test_query_rows() {
+        let conn = Connection::open("mock://").await.unwrap();
+
+        // Empty result
+        let mut stmt = conn.prepare("SELECT 0").await.unwrap();
+        let mut rows = conn.query_rows(&mut stmt, None).await.unwrap();
+        assert!(rows.next().await.is_none());
+
+        // More that one row.
+        let mut stmt = conn.prepare("SELECT 2").await.unwrap();
+        let mut rows = conn.query_rows(&mut stmt, None).await.unwrap();
+        assert_eq!(rows.next().await.unwrap().unwrap().get::<_, i32>(0), 1);
+        assert_eq!(rows.next().await.unwrap().unwrap().get::<_, i32>(0), 2);
+        assert!(rows.next().await.is_none());
+
+        // Error af the first iteration
+        let mut stmt = conn.prepare("SELECT -1").await.unwrap();
+        let mut rows = conn.query_rows(&mut stmt, None).await.unwrap();
+        assert!(rows.next().await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_query_row() {
+        let conn = Connection::open("mock://").await.unwrap();
+
+        assert_eq!(conn.query_row("SELECT 2", None).await.unwrap().unwrap().get::<_, i32>(0), 1);
+        assert_eq!(conn.query_row("SELECT 1", None).await.unwrap().unwrap().get::<_, i32>(0), 1);
+        assert!(conn.query_row("SELECT 0", None).await.unwrap().is_none());
+        assert!(conn.query_row("SELECT -1", None).await.is_err());
+        assert!(conn.query_row("SELECT X", None).await.is_err());
+
+        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
+        assert_eq!(conn.query_row(&mut stmt, None).await.unwrap().unwrap().get::<_, i32>(0), 1);
+        assert_eq!(conn.query_row(&mut stmt, None).await.unwrap().unwrap().get::<_, i32>(0), 1);
+    }
+
+    #[tokio::test]
+    async fn test_query_arrow() {
         let conn = Connection::open("mock://").await.unwrap();
 
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
@@ -475,6 +559,7 @@ mod tests {
         let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
         assert!(iter.next().await.is_some());
         assert!(iter.next().await.is_none());
+        drop(iter);
         drop(stmt);
 
         let mut stmt = conn.prepare("INSERT 1").await.unwrap();
@@ -498,7 +583,5 @@ mod tests {
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
         let mut iter = stmt.query().await.unwrap();
         assert!(iter.next().await.is_some());
-        drop(iter);
-        drop(stmt);
     }
 }

@@ -1,6 +1,5 @@
 use crate::connection::{Command, Handle};
 use crate::{await_on, RecordBatchStream};
-use either::Either;
 use futures::future::{err, BoxFuture};
 use squill_core::parameters::Parameters;
 use squill_core::{Error, Result};
@@ -8,7 +7,10 @@ use tokio::sync::oneshot;
 
 /// A prepared statement.
 ///
-/// A statement is a query/command that has been prepared for execution. It can be bound with parameters and executed.
+/// Created by [Connection::prepare], a statement is a query/command that has been prepared for execution.
+/// It can be bound with parameters and executed. It can be reused multiple times, with or without parameters.
+/// Parameters can be bound using the [Statement::bind] method and are re-used for each execution until new parameters
+/// are bound.
 pub struct Statement<'c> {
     pub(crate) handle: Handle,
     command_tx: crossbeam_channel::Sender<Command>,
@@ -59,43 +61,27 @@ impl Drop for Statement<'_> {
     }
 }
 
-/// A trait to allow either a string or a statement to be used in a method expecting a statement.
+/// An enum that can be either a string or a mutable reference to a statement.
 ///
-/// This trait is implemented for `&str`, `String`, and `Statement`.
-/// Note that this trait is not intended to be implemented by the user and it differs from its blocking counterpart for
-/// performance reasons.
-pub trait IntoStatement<'s> {
-    fn into_statement(self) -> Either<String, Statement<'s>>;
+/// This enum is used to allow some functions to accept either a string or a mutable reference to a statement.
+/// See [squill_core::statement::StatementRef] for an example.
+/// ```
+pub enum StatementRef<'r, 's> {
+    Str(&'r str),
+    Statement(&'r mut Statement<'s>),
 }
 
-impl<'s> IntoStatement<'s> for &str {
-    fn into_statement(self) -> Either<String, Statement<'s>> {
-        Either::Left(self.to_string())
+/// Conversion of a [std::str] reference to [StatementRef].
+impl<'r, 's: 'r> From<&'s str> for StatementRef<'r, '_> {
+    fn from(s: &'s str) -> Self {
+        StatementRef::Str(s)
     }
 }
 
-impl<'s> IntoStatement<'s> for String {
-    fn into_statement(self) -> Either<String, Statement<'s>> {
-        Either::Left(self)
-    }
-}
-
-impl<'s> IntoStatement<'s> for Statement<'s> {
-    fn into_statement(self) -> Either<String, Statement<'s>> {
-        Either::Right(self)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_either_statement() {
-        let conn = crate::Connection::open("mock:://").await.unwrap();
-
-        assert!("SELECT 1".into_statement().is_left());
-        assert!(String::from("SELECT 1").into_statement().is_left());
-        assert!(conn.prepare("SELECT 1").await.unwrap().into_statement().is_right());
+/// Conversion of a [Statement] mutable reference to [StatementRef].
+/// Create a `StatementRef` from a mutable reference to a statement.
+impl<'r, 's> From<&'r mut Statement<'s>> for StatementRef<'r, 's> {
+    fn from(statement: &'r mut Statement<'s>) -> Self {
+        StatementRef::Statement(statement)
     }
 }

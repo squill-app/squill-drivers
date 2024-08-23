@@ -4,8 +4,8 @@
 [![codecov](https://img.shields.io/codecov/c/gh/squill-app/squill-drivers/settings/badge.svg?token=MZQU5H90OW&style=for-the-badge&logo=codecov)](https://codecov.io/github/squill-app/squill-drivers)
 
 The aim of this crate is to provide a unified interface for various database systems. Each database system is accessed
-through a minimalist low-level blocking trait called `driver` and high-level blocking and non-blocking interfaces built
-on top of that trait are exposed to the developers.
+through a minimalist low-level blocking trait called **driver** and high-level blocking and non-blocking interfaces
+built on top of that trait are exposed to the developers.
 
 In a nutshell, here are the main features provided by this crate:
 
@@ -60,3 +60,8 @@ The short answer is _why reinventing the wheel?_. Because `squill` drivers are i
 of database systems, each having their own data types and description a of a query result, we need an independent memory
 format and an independent schema to represent data in memory and describe them.
 [Arrow](https://arrow.apache.org/docs/python/api/datatypes.html#data-types-and-schemas) provide both and more...
+
+## Special Thanks
+
+A special thanks to [Quine Dot](https://users.rust-lang.org/u/quinedot/summary) who has been a tremendous help for me
+on the [RUST lang user's forum](https://users.rust-lang.org)...

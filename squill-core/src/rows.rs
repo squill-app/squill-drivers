@@ -23,6 +23,13 @@ pub struct Row {
 }
 
 impl Row {
+    /// Create a new row.
+    ///
+    /// Users are not expected to call this function directly as it's intended to be only used by the library.
+    pub fn new(record_batch: Arc<RecordBatch>, index_in_batch: usize) -> Self {
+        Row { record_batch, index_in_batch }
+    }
+
     /// Get the description of the row.
     pub fn schema(&self) -> SchemaRef {
         self.record_batch.schema()
@@ -63,23 +70,34 @@ impl<'i> Iterator for Rows<'i> {
     type Item = Result<Row>;
 
     fn next(&mut self) -> Option<Result<Row>> {
-        if self.last_record_batch.is_none()
-            || self.index_in_batch >= self.last_record_batch.as_ref().unwrap().num_rows()
-        {
+        if self.last_record_batch.is_none() {
+            // First call or we've exhausted the last batch.
             self.last_record_batch = match self.iterator.next() {
-                Some(Ok(record_batch)) => Some(Arc::new(record_batch)),
+                Some(Ok(record_batch)) => {
+                    // There is a batch available.
+                    self.index_in_batch = 0;
+                    Some(Arc::new(record_batch))
+                }
                 Some(Err(e)) => {
+                    // AN error occurred while fetching the next batch.
                     return Some(Err(e));
                 }
-                None => {
-                    return None;
-                }
+                // No more batches available.
+                None => None,
             };
-            self.index_in_batch = 0;
         }
-        let row = Row { record_batch: self.last_record_batch.clone().unwrap(), index_in_batch: self.index_in_batch };
-        self.index_in_batch += 1;
-        Some(Ok(row))
+        match &self.last_record_batch {
+            None => None,
+            Some(last_record_batch) => {
+                let row = Row { record_batch: last_record_batch.clone(), index_in_batch: self.index_in_batch };
+                self.index_in_batch += 1;
+                if self.index_in_batch >= last_record_batch.num_rows() {
+                    // we've exhausted the current batch
+                    self.last_record_batch = None;
+                }
+                Some(Ok(row))
+            }
+        }
     }
 }
 

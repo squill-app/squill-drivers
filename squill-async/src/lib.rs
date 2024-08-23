@@ -1,6 +1,8 @@
 pub mod connection;
 pub mod statement;
-pub mod stream;
+pub mod streams;
 
 pub use connection::Connection;
-pub use stream::RecordBatchStream;
+pub use statement::Statement;
+pub use streams::RecordBatchStream;
+pub use streams::RowStream;
