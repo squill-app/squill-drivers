@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! params {
     () => {
-        &[] as &[&dyn $crate::values::ToValue]
+        None
     };
     ($($param:expr),+ $(,)?) => {
         Some($crate::parameters::Parameters::from_slice(&[$(&$param as &dyn $crate::values::ToValue),+] as &[&dyn $crate::values::ToValue]))

@@ -146,6 +146,16 @@ where
     }
 }
 
+impl<T> From<&T> for Value
+where
+    T: Into<Value> + Clone,
+{
+    #[inline]
+    fn from(v: &T) -> Value {
+        v.clone().into()
+    }
+}
+
 macro_rules! impl_from_for_value {
     ($t:ty, $variant:ident) => {
         impl From<$t> for Value {
@@ -283,13 +293,13 @@ impl fmt::Display for Value {
     }
 }
 
-pub trait ToValue {
+pub trait ToValue: Send + Sync {
     fn to_value(&self) -> Value;
 }
 
 impl<T> ToValue for T
 where
-    T: Into<Value> + Clone,
+    T: Into<Value> + Clone + Send + Sync,
 {
     fn to_value(&self) -> Value {
         self.clone().into()

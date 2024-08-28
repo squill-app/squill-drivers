@@ -17,13 +17,20 @@ use tracing::error;
 /// An handle to an object owned by the connection's thread.
 pub(crate) type Handle = u64;
 
+pub(crate) fn into_error(e: Box<dyn std::error::Error + Send + Sync>) -> Error {
+    match e.downcast::<Error>() {
+        Ok(error) => *error,
+        Err(e) => Error::DriverError { error: e },
+    }
+}
+
 #[macro_export]
 macro_rules! await_on {
     ($rx:expr) => {
         Box::pin(async move {
             match $rx.await {
                 Ok(Ok(value)) => Ok(value),
-                Ok(Err(e)) => Err(Error::DriverError { error: e }),
+                Ok(Err(e)) => Err(into_error(e)),
                 Err(e) => Err(Error::InternalError { error: e.into() }),
             }
         })
@@ -434,9 +441,12 @@ impl Connection {
                                                 }
                                             }
                                         }
-                                        Err(e) => {
-                                            error!("Channel communication error: {:?}", e);
-                                            return;
+
+                                        //
+                                        // The channel is closed (connection is closed).
+                                        //
+                                        Err(_e) => {
+                                            break;
                                         }
 
                                         //
@@ -499,8 +509,11 @@ impl Connection {
                     // that either an error occurred while fetching the next record batch or the iterator is exhausted.
                     // There is nothing to do here since this command doesn't expect a response.
                 }
-                Err(e) => {
-                    error!("Channel communication error: {:?}", e);
+
+                //
+                // The channel is closed (connection is closed).
+                //
+                Err(_e) => {
                     break;
                 }
             }
@@ -531,8 +544,8 @@ mod tests {
     async fn test_bind() {
         let conn = Connection::open("mock://").await.unwrap();
         let mut stmt = conn.prepare("SELECT ?").await.unwrap();
-        assert!(stmt.bind(params!(1).unwrap()).await.is_ok());
-        assert!(stmt.bind(params!(1, 2).unwrap()).await.is_err());
+        assert!(stmt.bind(params!(1)).await.is_ok());
+        assert!(stmt.bind(params!(1, 2)).await.is_err());
     }
 
     #[tokio::test]

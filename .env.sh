@@ -32,3 +32,9 @@ function clean() {
 function ctest() {
   cargo test --workspace
 }
+
+function run_pre_commit() {
+  cargo clippy --all-targets --all-features --examples --tests && \
+  cargo check --workspace --all-targets --all-features && \
+  cargo audit
+}

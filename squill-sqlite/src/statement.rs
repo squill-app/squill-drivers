@@ -1,3 +1,4 @@
+use crate::errors::driver_error;
 use crate::value::Adapter;
 use crate::SqliteOptionsRef;
 use arrow_array::builder::ArrayBuilder;
@@ -35,7 +36,7 @@ impl DriverStatement for SqliteStatement<'_> {
                 // The valid values for the index `in raw_bind_parameter` begin at `1`, and end at
                 // [`Statement::parameter_count`], inclusive.
                 for (index, value) in values.iter().enumerate() {
-                    self.inner.raw_bind_parameter(index + 1, Adapter(value))?;
+                    self.inner.raw_bind_parameter(index + 1, Adapter(value)).map_err(driver_error)?;
                 }
                 Ok(())
             }
@@ -43,7 +44,7 @@ impl DriverStatement for SqliteStatement<'_> {
     }
 
     fn execute(&mut self) -> Result<u64> {
-        Ok(self.inner.raw_execute()? as u64)
+        Ok(self.inner.raw_execute().map_err(driver_error)? as u64)
     }
 
     fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {

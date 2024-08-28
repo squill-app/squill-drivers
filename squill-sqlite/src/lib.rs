@@ -1,6 +1,7 @@
 use squill_core::factory::Factory;
 
 mod driver;
+mod errors;
 mod factory;
 mod statement;
 mod value;

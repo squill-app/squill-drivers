@@ -9,7 +9,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-rusqlite = { version = "0.31.0", features = ["column_decltype", "series"] }
+rusqlite = { version = "0.31", features = ["column_decltype", "series"] }
 squill-core = { workspace = true }
 url = { workspace = true }
 arrow-array = { workspace = true }

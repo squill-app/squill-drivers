@@ -1,9 +1,9 @@
+use crate::errors::driver_error;
+use crate::statement::SqliteStatement;
+use crate::{Sqlite, DRIVER_NAME};
 use squill_core::driver::DriverConnection;
 use squill_core::driver::DriverStatement;
 use squill_core::driver::Result;
-
-use crate::statement::SqliteStatement;
-use crate::{Sqlite, DRIVER_NAME};
 
 impl DriverConnection for Sqlite {
     fn driver_name(&self) -> &str {
@@ -15,7 +15,10 @@ impl DriverConnection for Sqlite {
     }
 
     fn prepare<'c: 's, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
-        Ok(Box::new(SqliteStatement { inner: self.conn.prepare(statement)?, options: self.options.clone() }))
+        Ok(Box::new(SqliteStatement {
+            inner: self.conn.prepare(statement).map_err(driver_error)?,
+            options: self.options.clone(),
+        }))
     }
 }
 

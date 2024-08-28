@@ -65,13 +65,34 @@ impl Row {
         }
     }
 
+    pub fn get_nullable<I: ColumnIndex, T: Decode>(&self, index: I) -> Option<T> {
+        match index.index(self.record_batch.schema()) {
+            Ok(index) => {
+                if decode::is_null(self.record_batch.column(index), self.index_in_batch) {
+                    return None;
+                }
+                Some(T::decode(self.record_batch.column(index), self.index_in_batch))
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+
     /// Get a value from a column by its index.
     ///
     /// The index of the column can be either a 0-based index or the name of the column.
-    /// This method returns an error if the column index is out of bounds or if the type is not the expected one.
+    /// This method returns an error if the column index is out of bounds, or if the type is not the expected one, or if
+    /// the value is null.
     pub fn try_get<I: ColumnIndex, T: Decode>(&self, index: I) -> Result<T> {
         let index = index.index(self.record_batch.schema())?;
         T::try_decode(self.record_batch.column(index), self.index_in_batch)
+    }
+
+    pub fn try_get_nullable<I: ColumnIndex, T: Decode>(&self, index: I) -> Result<Option<T>> {
+        let index = index.index(self.record_batch.schema())?;
+        if decode::is_null(self.record_batch.column(index), self.index_in_batch) {
+            return Ok(None);
+        }
+        Ok(Some(T::try_decode(self.record_batch.column(index), self.index_in_batch)?))
     }
 }
 

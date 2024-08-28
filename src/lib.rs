@@ -14,6 +14,7 @@
 //! * [`squill-async`][squill_async] - asynchronous adapter for squill drivers
 
 pub use squill_core::connection::Connection;
+pub use squill_core::error::Error;
 pub use squill_core::factory::Factory;
 pub use squill_core::parameters::Parameters;
 pub use squill_core::rows::Row;
@@ -28,6 +29,8 @@ pub use squill_core::{execute, params, query_arrow};
 pub mod futures {
     pub use squill_async::Connection;
     pub use squill_async::RecordBatchStream;
+    pub use squill_async::RowStream;
+    pub use squill_async::Statement;
 }
 
 #[cfg(feature = "sqlite")]

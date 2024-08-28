@@ -1,6 +1,6 @@
-use crate::connection::{Command, Handle};
+use crate::connection::{into_error, Command, Handle};
 use crate::{await_on, RecordBatchStream};
-use futures::future::{err, BoxFuture};
+use futures::future::{err, ready, BoxFuture};
 use squill_core::parameters::Parameters;
 use squill_core::{Error, Result};
 use tokio::sync::oneshot;
@@ -22,12 +22,17 @@ impl Statement<'_> {
         Self { handle, command_tx, phantom: std::marker::PhantomData }
     }
 
-    pub fn bind(&mut self, parameters: Parameters) -> BoxFuture<'_, Result<()>> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Bind { handle: self.handle, parameters, tx }) {
-            return Box::pin(err::<(), Error>(Error::DriverError { error: e.into() }));
+    pub fn bind(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<()>> {
+        match parameters {
+            Some(parameters) => {
+                let (tx, rx) = oneshot::channel();
+                if let Err(e) = self.command_tx.send(Command::Bind { handle: self.handle, parameters, tx }) {
+                    return Box::pin(err::<(), Error>(Error::DriverError { error: e.into() }));
+                }
+                await_on!(rx)
+            }
+            None => Box::pin(ready(Ok(()))),
         }
-        await_on!(rx)
     }
 
     pub fn execute(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<u64>> {

@@ -6,15 +6,67 @@
 ///   interact with this error type.
 #[derive(Debug)]
 pub enum Error {
-    ArrowError { error: arrow_schema::ArrowError },
-    DriverError { error: Box<dyn std::error::Error + Send + Sync> },
-    DriverNotFound { scheme: String },
-    InternalError { error: Box<dyn std::error::Error + Send + Sync> },
-    InvalidParameterCount { expected: usize, actual: usize },
-    InvalidType { expected: String, actual: String },
-    InvalidUri { uri: String },
+    ArrowError {
+        error: arrow_schema::ArrowError,
+    },
+
+    /// There is a constraint violation.
+    /// This error is used when a constraint is violated. For example, when a unique constraint is violated.
+    ConstraintViolation {
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// The driver is reporting that there is no more space in the storage.
+    StorageFull {
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// The driver is reporting an error (other than the existing error types).
+    DriverError {
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    DriverNotFound {
+        scheme: String,
+    },
+
+    /// The driver is reporting that the input of a statement is invalid.
+    InputError {
+        message: String,
+        input: String,
+        offset: usize,
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    InternalError {
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    InvalidParameterCount {
+        expected: usize,
+        actual: usize,
+    },
+
+    InvalidType {
+        expected: String,
+        actual: String,
+    },
+
+    InvalidUri {
+        uri: String,
+    },
+
     NotFound,
-    OutOfBounds { index: usize },
+
+    OutOfBounds {
+        index: usize,
+    },
+
+    /// The driver is reporting that it is out of memory.
+    OutOfMemory {
+        error: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     UnsupportedDataType,
 }
 
@@ -49,8 +101,15 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::ArrowError { error } => write!(f, "{}", error),
+            Error::ConstraintViolation { error } => write!(f, "{}", error),
+            Error::StorageFull { error } => write!(f, "{}", error),
             Error::DriverError { error } => write!(f, "{}", error),
             Error::DriverNotFound { scheme } => write!(f, "No driver found for scheme: {}", scheme),
+            Error::InputError { message, input, offset, error } => write!(
+                f,
+                "Input error: message: '{}', input: '{}', offset: {}, error: {}",
+                message, input, offset, error
+            ),
             Error::InternalError { error } => write!(f, "{}", error),
             Error::InvalidParameterCount { expected, actual } => {
                 write!(f, "Invalid parameter count: expected {}, actual {}", expected, actual)
@@ -61,6 +120,7 @@ impl std::fmt::Display for Error {
             Error::InvalidUri { uri } => write!(f, "Invalid URI: {}", uri),
             Error::NotFound => write!(f, "Not found"),
             Error::OutOfBounds { index } => write!(f, "Out of bounds index {}", index),
+            Error::OutOfMemory { error } => write!(f, "{}", error),
             Error::UnsupportedDataType => write!(f, "Unsupported type"),
         }
     }
