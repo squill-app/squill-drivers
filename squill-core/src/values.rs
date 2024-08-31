@@ -1,6 +1,7 @@
 use chrono::{DateTime, Datelike, TimeZone};
 use rust_decimal::Decimal;
 use std::fmt;
+use uuid::Uuid;
 
 // The number of days between the UNIX epoch and the CE epoch.
 // Same as `chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap().num_days_from_ce()` but faster...
@@ -132,6 +133,20 @@ impl<T: TimeZone> From<DateTime<T>> for Value {
     }
 }
 
+/// Convert a Uuid into a Value::String or Value::Null if the Uuid is nil.
+///
+/// If you explicitly want to convert an Uuid into a u128, you can use `Uuid::as_u128()` when binding the value.
+impl From<Uuid> for Value {
+    #[inline]
+    fn from(value: Uuid) -> Self {
+        if value.is_nil() {
+            Value::Null
+        } else {
+            Value::String(value.to_string())
+        }
+    }
+}
+
 /// Convert an Option<T> into a Value::Null if None, otherwise convert the value into a Value.
 impl<T> From<Option<T>> for Value
 where
@@ -184,7 +199,6 @@ impl_from_for_value!(String, String);
 impl_from_for_value!(&str, String);
 impl_from_for_value!(Vec<u8>, Blob);
 impl_from_for_value!(Decimal, Decimal);
-impl_from_for_value!(uuid::Uuid, String);
 
 /// Display implementation for Value.
 ///
@@ -330,6 +344,8 @@ fn fmt_unit(
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
@@ -409,6 +425,11 @@ mod tests {
         assert_eq!(
             Value::from(chrono::NaiveDate::from_ymd_opt(2021, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap()),
             Value::Timestamp(TimeUnit::Millisecond, 1609459200000)
+        );
+        assert_eq!(Value::from(Uuid::nil()), Value::Null);
+        assert_eq!(
+            Value::from(Uuid::from_str("58cb5e1d-5104-49c7-a983-f1dc53c3da84").unwrap()),
+            Value::String("58cb5e1d-5104-49c7-a983-f1dc53c3da84".to_string())
         );
     }
 }
