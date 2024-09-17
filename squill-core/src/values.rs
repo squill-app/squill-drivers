@@ -136,6 +136,7 @@ impl<T: TimeZone> From<DateTime<T>> for Value {
 /// Convert a Uuid into a Value::String or Value::Null if the Uuid is nil.
 ///
 /// If you explicitly want to convert an Uuid into a u128, you can use `Uuid::as_u128()` when binding the value.
+/// If you want to store the nil UUID in database, you can bind the value as a `String`.
 impl From<Uuid> for Value {
     #[inline]
     fn from(value: Uuid) -> Self {

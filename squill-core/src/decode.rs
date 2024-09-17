@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use arrow_array::array::Array;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 /// A trait to decode values from an Arrow array.
 pub trait Decode: Sized {
@@ -147,9 +147,18 @@ impl Decode for chrono::DateTime<chrono::Utc> {
                 }),
             }
         } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::StringArray>() {
-            match chrono::DateTime::parse_from_rfc3339(array.value(index)) {
-                Ok(datetime) => Ok(datetime.with_timezone(&Utc)),
-                Err(e) => Err(Error::InternalError { error: e.into() }),
+            let value = array.value(index);
+            if value.len() == 19 {
+                // This may be a date such as '2024-09-05 05:04:47'. sqlite3 returns dates in this format.
+                match chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
+                    Ok(datetime) => Ok(DateTime::from_naive_utc_and_offset(datetime, Utc)),
+                    Err(e) => Err(Error::InternalError { error: e.into() }),
+                }
+            } else {
+                match chrono::DateTime::parse_from_rfc3339(value) {
+                    Ok(datetime) => Ok(datetime.with_timezone(&Utc)),
+                    Err(e) => Err(Error::InternalError { error: e.into() }),
+                }
             }
         } else {
             Err(Error::InvalidType {
