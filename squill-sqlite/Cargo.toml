@@ -19,6 +19,7 @@ bytesize = { workspace = true }
 [dev-dependencies]
 ctor = { workspace = true }
 tempfile = { workspace = true }
+tokio-test = { workspace = true }
 
 [features]
 default = []

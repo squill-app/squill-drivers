@@ -5,6 +5,12 @@ use squill_core::driver::{DriverConnection, DriverFactory, Result};
 use squill_core::Error;
 use std::sync::Arc;
 
+/// Special path in an URI for an in-memory databases.
+/// This form is not the expected URI path to be given to driver implementations but it is the path returned by the
+/// [url] crate when parsing the URI.
+/// The expected URI format are described at https://www.sqlite.org/inmemorydb.html
+const IN_MEMORY_URI_PATH: &str = "/:memory:";
+
 pub(crate) struct SqliteFactory {}
 
 impl DriverFactory for SqliteFactory {
@@ -21,17 +27,9 @@ impl DriverFactory for SqliteFactory {
         let mut sqlite_uri = uri.to_string();
         sqlite_uri.replace_range(0.."sqlite:".len(), "file:");
 
-        // SQLite is expecting to have some flags set when opening a database even if the `mode` URI parameter will
-        // eventually override them.
-        let conn = rusqlite::Connection::open_with_flags(
-            &sqlite_uri,
-            rusqlite::OpenFlags::SQLITE_OPEN_URI
-                | rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
-                | rusqlite::OpenFlags::SQLITE_OPEN_CREATE,
-        )?;
-
-        // Parse additional the URI parameters specific to the implementation of the driver.
+        // Parse URI parameters to set the options and connection open flags.
         let mut options = SqliteOptions::default();
+        let mut flags = rusqlite::OpenFlags::SQLITE_OPEN_URI;
         let parsed_uri = url::Url::parse(&sqlite_uri).map_err(|_| Error::InvalidUri { uri: uri.to_string() })?;
         parsed_uri.query_pairs().try_for_each(|(key, value)| {
             if key == "max_batch_rows" {
@@ -46,10 +44,37 @@ impl DriverFactory for SqliteFactory {
                 } else {
                     return Err(Error::InvalidUri { uri: uri.to_string() });
                 }
+            } else if key == "mode" {
+                // Despite using `SQLITE_OPEN_URI` the documentation is explicit about the flags that must include
+                // one of the three combination below.
+                // See https://www.sqlite.org/c3ref/open.html
+                match value.as_ref() {
+                    "ro" => flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                    "rw" => flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE,
+                    "rwc" => {
+                        flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE
+                    }
+                    "memory" => {
+                        flags |= rusqlite::OpenFlags::SQLITE_OPEN_MEMORY | rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+                    }
+                    _ => return Err(Error::InvalidUri { uri: uri.to_string() }),
+                }
             }
             Ok(())
         })?;
-        Ok(Box::new(Sqlite { conn, options: Arc::new(options) }))
+
+        if parsed_uri.path() == IN_MEMORY_URI_PATH
+            && !flags.contains(rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
+            && !flags.contains(rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        {
+            // For an in-memory database we need to specify the mode to be read-write.
+            flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
+        }
+
+        Ok(Box::new(Sqlite {
+            conn: rusqlite::Connection::open_with_flags(&sqlite_uri, flags)?,
+            options: Arc::new(options),
+        }))
     }
 }
 
@@ -57,6 +82,7 @@ impl DriverFactory for SqliteFactory {
 mod tests {
     use ctor::ctor;
     use squill_core::factory::Factory;
+    use tokio_test::assert_ok;
 
     #[ctor]
     fn before_all() {
@@ -65,8 +91,8 @@ mod tests {
 
     #[test]
     fn test_open_memory() {
-        assert!(Factory::open("sqlite::memory:").is_ok());
-        assert!(Factory::open("sqlite:memdb1?mode=memory&cache=shared").is_ok());
+        assert_ok!(Factory::open("sqlite::memory:"));
+        assert_ok!(Factory::open("sqlite:memdb1?mode=memory&cache=shared"));
     }
 
     #[test]
@@ -77,8 +103,8 @@ mod tests {
         // trying to open a file that does not exist in read-only should fail
         assert!(Factory::open(&format!("sqlite://{}?mode=ro", Factory::to_uri_path(&file_path))).is_err());
         // trying to open a file that does not exist in read-write should create it
-        assert!(Factory::open(&format!("sqlite://{}?mode=rwc", Factory::to_uri_path(&file_path))).is_ok());
+        assert_ok!(Factory::open(&format!("sqlite://{}?mode=rwc", Factory::to_uri_path(&file_path))));
         // now that the file exists, opening it in read-only should work
-        assert!(Factory::open(&format!("sqlite://{}?mode=ro", Factory::to_uri_path(&file_path))).is_ok());
+        assert_ok!(Factory::open(&format!("sqlite://{}?mode=ro", Factory::to_uri_path(&file_path))));
     }
 }
