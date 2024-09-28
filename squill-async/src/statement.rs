@@ -4,6 +4,7 @@ use futures::future::{err, ready, BoxFuture};
 use squill_core::parameters::Parameters;
 use squill_core::{Error, Result};
 use tokio::sync::oneshot;
+use tracing::{event, Level};
 
 /// A prepared statement.
 ///
@@ -25,6 +26,7 @@ impl Statement<'_> {
     pub fn bind(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<()>> {
         match parameters {
             Some(parameters) => {
+                event!(Level::DEBUG, message = %{ format!("Binding with: {:?}", parameters) });
                 let (tx, rx) = oneshot::channel();
                 if let Err(e) = self.command_tx.send(Command::Bind { handle: self.handle, parameters, tx }) {
                     return Box::pin(err::<(), Error>(Error::DriverError { error: e.into() }));

@@ -5,12 +5,6 @@ use squill_core::driver::{DriverConnection, DriverFactory, Result};
 use squill_core::Error;
 use std::sync::Arc;
 
-/// Special path in an URI for an in-memory databases.
-/// This form is not the expected URI path to be given to driver implementations but it is the path returned by the
-/// [url] crate when parsing the URI.
-/// The expected URI format are described at https://www.sqlite.org/inmemorydb.html
-const IN_MEMORY_URI_PATH: &str = "/:memory:";
-
 pub(crate) struct SqliteFactory {}
 
 impl DriverFactory for SqliteFactory {
@@ -63,12 +57,11 @@ impl DriverFactory for SqliteFactory {
             Ok(())
         })?;
 
-        if parsed_uri.path() == IN_MEMORY_URI_PATH
-            && !flags.contains(rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
+        if !flags.contains(rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
             && !flags.contains(rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         {
-            // For an in-memory database we need to specify the mode to be read-write.
-            flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
+            // If the open flags do not specify a mode, we assume that the database is read-write.
+            flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE;
         }
 
         Ok(Box::new(Sqlite {

@@ -8,11 +8,11 @@ use squill_core::driver::{DriverConnection, DriverStatement};
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
 use squill_core::rows::Row;
-use squill_core::{Error, Result};
+use squill_core::{clean_statement, Error, Result};
 use std::collections::HashMap;
 use std::thread;
 use tokio::sync::oneshot;
-use tracing::error;
+use tracing::{debug, error, event, Level};
 
 /// An handle to an object owned by the connection's thread.
 pub(crate) type Handle = u64;
@@ -66,6 +66,7 @@ impl Connection {
             crossbeam_channel::bounded(1);
         let uri: String = uri.into();
         let (open_tx, open_rx) = oneshot::channel();
+        debug!("Opening: {}", uri);
 
         let thread_spawn_result = thread::Builder::new()
             // .name(params.thread_name.clone())
@@ -107,7 +108,9 @@ impl Connection {
 
     pub fn prepare<S: Into<String>>(&self, statement: S) -> BoxFuture<'_, Result<Statement<'_>>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::PrepareStatement { statement: statement.into(), tx }) {
+        let statement = statement.into();
+        event!(Level::DEBUG, message = %{ clean_statement(&statement) });
+        if let Err(e) = self.command_tx.send(Command::PrepareStatement { statement, tx }) {
             return Box::pin(err::<Statement<'_>, Error>(Error::DriverError { error: e.into() }));
         }
         Box::pin(async move {
@@ -131,6 +134,7 @@ impl Connection {
             StatementRef::Str(s) => {
                 let (tx, rx) = oneshot::channel();
                 let statement = s.to_string();
+                event!(Level::DEBUG, message = %{ clean_statement(&statement) });
                 if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
                     return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
                 }

@@ -24,3 +24,25 @@ pub type Error = error::Error;
 
 /// A specialized `Result` type for this library.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Return a clean version of the input string for logging purposes.
+/// The returned statement is cleaned by removing all non significant characters.
+pub fn clean_statement(input: &str) -> String {
+    let mut result = String::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\n' {
+            // Replace by a space and skip following spaces
+            result.push(' ');
+            while let Some(' ') = chars.peek() {
+                chars.next();
+            }
+            result.push(' ');
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
