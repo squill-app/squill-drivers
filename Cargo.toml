@@ -74,6 +74,7 @@ squill-core = { workspace = true, features = ["mock"] }
 [features]
 default = []
 duckdb = ["squill-duckdb"]
+duckdb-bundled = ["squill-duckdb/bundled"]
 async = ["squill-async"]
 sqlite = ["squill-sqlite"]
 
