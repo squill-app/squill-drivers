@@ -14,6 +14,7 @@
 //! * [`squill-async`][squill_async] - asynchronous adapter for squill drivers
 
 pub use squill_core::connection::Connection;
+pub use squill_core::decode::Decode;
 pub use squill_core::error::Error;
 pub use squill_core::factory::Factory;
 pub use squill_core::parameters::Parameters;
@@ -43,6 +44,11 @@ pub mod sqlite {
 #[cfg(feature = "duckdb")]
 pub mod duckdb {
     pub use squill_duckdb::DRIVER_NAME;
+}
+
+#[cfg(feature = "serde")]
+pub mod serde {
+    pub use squill_serde::*;
 }
 
 pub fn register_drivers() {

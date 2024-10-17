@@ -1,0 +1,21 @@
+[package]
+name = "squill-serde"
+description = "The core of the squill driver library. This is not intended to be used directly."
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+syn = { version="2.0" }
+quote = { version="1.0" }
+proc-macro2 = { version="1.0" }
+serde = { version="1.0" }
+serde_json = { version="1.0" }
+squill-core = { workspace = true }
+
+[lib]
+proc-macro = true

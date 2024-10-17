@@ -28,6 +28,7 @@ squill-async = { version = "0.1.0", path = "./squill-async" }
 squill-duckdb = { version = "0.1.0", path = "./squill-duckdb" }
 squill-sqlite = { version = "0.1.0", path = "./squill-sqlite" }
 squill-drivers = { version = "0.1.0", path = "./squill-drivers" }
+squill-serde = { version = "0.1.0", path = "./squill-serde" }
 tracing = "0.1.40"
 arrow-schema = { version = "52" }
 arrow-array = { version = "52", default-features = false, features = [
@@ -65,6 +66,7 @@ squill-core = { workspace = true }
 squill-duckdb = { workspace = true, optional = true }
 squill-async = { workspace = true, optional = true }
 squill-sqlite = { workspace = true, optional = true }
+squill-serde = { workspace = true, optional = true}
 
 [dev-dependencies]
 criterion = "0.5.1"
@@ -77,6 +79,7 @@ duckdb = ["squill-duckdb"]
 duckdb-bundled = ["squill-duckdb/bundled"]
 async = ["squill-async"]
 sqlite = ["squill-sqlite"]
+serde = ["squill-serde"]
 
 [[example]]
 name = "rows"

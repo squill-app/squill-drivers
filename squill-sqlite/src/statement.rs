@@ -298,4 +298,17 @@ mod tests {
         assert_eq!(String::decode(&batch.column(0), 0), "2023-01-01 10:00:00");
         Ok(())
     }
+
+    #[test]
+    fn test_boolean() -> Result<()> {
+        let conn = Connection::open(IN_MEMORY_URI)?;
+        let mut stmt = conn.prepare("SELECT TRUE, FALSE")?;
+        let mut iter = query_arrow!(&mut stmt)?;
+        let batch = iter.next().unwrap()?;
+        assert_eq!(batch.schema().fields().len(), 2);
+        assert_eq!(*batch.schema().fields()[0].data_type(), arrow_schema::DataType::Int64);
+        assert!(bool::decode(&batch.column(0), 0));
+        assert!(!bool::decode(&batch.column(1), 0));
+        Ok(())
+    }
 }

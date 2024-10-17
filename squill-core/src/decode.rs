@@ -1,5 +1,6 @@
 use crate::{Error, Result};
 use arrow_array::array::Array;
+use arrow_schema::{DataType, TimeUnit};
 use chrono::{DateTime, Utc};
 
 /// A trait to decode values from an Arrow array.
@@ -53,9 +54,32 @@ impl_decode!(u32, UInt32Array);
 impl_decode!(u64, UInt64Array);
 impl_decode!(f32, Float32Array);
 impl_decode!(f64, Float64Array);
-impl_decode!(bool, BooleanArray);
 impl_decode!(String, StringArray);
 impl_decode!(Vec<u8>, BinaryArray);
+
+/// Decoding a boolean from a {{arrow_array::Array}}
+///
+/// This implementation will try to decode a boolean from a {{arrow_array::BooleanArray}} or an
+/// {{arrow_array::Int64Array}} in order to support databases that store booleans as integers such as SQLite.
+impl Decode for bool {
+    fn decode(array: &dyn Array, index: usize) -> Self {
+        match Self::try_decode(array, index) {
+            Ok(value) => value,
+            Err(_) => panic!("Unable to decode a boolean (index: {})", index),
+        }
+    }
+
+    fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
+        if index >= array.len() {
+            return Err(Error::OutOfBounds { index });
+        }
+        match array.data_type() {
+            DataType::Boolean => Ok(array.as_any().downcast_ref::<arrow_array::BooleanArray>().unwrap().value(index)),
+            DataType::Int64 => Ok(array.as_any().downcast_ref::<arrow_array::Int64Array>().unwrap().value(index) != 0),
+            _ => Err(Error::InvalidType { expected: "Boolean".to_string(), actual: array.data_type().to_string() }),
+        }
+    }
+}
 
 /// Decoding a UUID from a {{arrow_array::Array}}
 impl Decode for uuid::Uuid {
@@ -115,56 +139,61 @@ impl Decode for chrono::DateTime<chrono::Utc> {
     }
 
     fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
-        if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampSecondArray>() {
-            match chrono::DateTime::<Utc>::from_timestamp(array.value(index), 0) {
-                Some(datetime) => Ok(datetime),
-                None => Err(Error::InternalError {
-                    error: format!("Out of range datetime: {}s.", array.value(index)).into(),
-                }),
-            }
-        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampMillisecondArray>() {
-            match chrono::DateTime::<Utc>::from_timestamp_millis(array.value(index)) {
-                Some(datetime) => Ok(datetime),
-                None => Err(Error::InternalError {
-                    error: format!("Out of range datetime: {}ms.", array.value(index)).into(),
-                }),
-            }
-        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>() {
-            match chrono::DateTime::<Utc>::from_timestamp_micros(array.value(index)) {
-                Some(datetime) => Ok(datetime),
-                None => Err(Error::InternalError {
-                    error: format!("Out of range datetime: {}μs.", array.value(index)).into(),
-                }),
-            }
-        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::TimestampNanosecondArray>() {
-            Ok(chrono::DateTime::from_timestamp_nanos(array.value(index)))
-        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::Int64Array>() {
-            // Expecting Epoch seconds
-            match chrono::DateTime::<Utc>::from_timestamp(array.value(index), 0) {
-                Some(datetime) => Ok(datetime),
-                None => Err(Error::InternalError {
-                    error: format!("Out of range datetime: {}s.", array.value(index)).into(),
-                }),
-            }
-        } else if let Some(array) = array.as_any().downcast_ref::<arrow_array::StringArray>() {
-            let value = array.value(index);
-            if value.len() == 19 {
-                // This may be a date such as '2024-09-05 05:04:47'. sqlite3 returns dates in this format.
-                match chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-                    Ok(datetime) => Ok(DateTime::from_naive_utc_and_offset(datetime, Utc)),
-                    Err(e) => Err(Error::InternalError { error: e.into() }),
-                }
-            } else {
-                match chrono::DateTime::parse_from_rfc3339(value) {
-                    Ok(datetime) => Ok(datetime.with_timezone(&Utc)),
-                    Err(e) => Err(Error::InternalError { error: e.into() }),
+        match array.data_type() {
+            DataType::Timestamp(TimeUnit::Second, _) => {
+                let secs = array.as_any().downcast_ref::<arrow_array::TimestampSecondArray>().unwrap().value(index);
+                match chrono::DateTime::<Utc>::from_timestamp(secs, 0) {
+                    Some(datetime) => Ok(datetime),
+                    None => Err(Error::InternalError { error: format!("Out of range datetime: {}s.", secs).into() }),
                 }
             }
-        } else {
-            Err(Error::InvalidType {
-                expected: "Timestamp".to_string(), // FIXME:
-                actual: array.data_type().to_string(),
-            })
+            DataType::Timestamp(TimeUnit::Millisecond, _) => {
+                let ms = array.as_any().downcast_ref::<arrow_array::TimestampMillisecondArray>().unwrap().value(index);
+                match chrono::DateTime::<Utc>::from_timestamp_millis(ms) {
+                    Some(datetime) => Ok(datetime),
+                    None => Err(Error::InternalError { error: format!("Out of range datetime: {}ms.", ms).into() }),
+                }
+            }
+            DataType::Timestamp(TimeUnit::Microsecond, _) => {
+                let micro =
+                    array.as_any().downcast_ref::<arrow_array::TimestampMicrosecondArray>().unwrap().value(index);
+                match chrono::DateTime::<Utc>::from_timestamp_micros(micro) {
+                    Some(datetime) => Ok(datetime),
+                    None => Err(Error::InternalError { error: format!("Out of range datetime: {}μs.", micro).into() }),
+                }
+            }
+            DataType::Timestamp(TimeUnit::Nanosecond, _) => {
+                let nano = array.as_any().downcast_ref::<arrow_array::TimestampNanosecondArray>().unwrap().value(index);
+                Ok(chrono::DateTime::<Utc>::from_timestamp_nanos(nano))
+            }
+            DataType::Int64 => {
+                let secs = array.as_any().downcast_ref::<arrow_array::Int64Array>().unwrap().value(index);
+                match chrono::DateTime::<Utc>::from_timestamp(secs, 0) {
+                    Some(datetime) => Ok(datetime),
+                    None => Err(Error::InternalError { error: format!("Out of range datetime: {}s.", secs).into() }),
+                }
+            }
+            DataType::Utf8 => {
+                let str = array.as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(index);
+                if str.len() == 19 {
+                    // This may be a date such as '2024-09-05 05:04:47'. sqlite returns dates in this format.
+                    match chrono::NaiveDateTime::parse_from_str(str, "%Y-%m-%d %H:%M:%S") {
+                        Ok(datetime) => Ok(DateTime::from_naive_utc_and_offset(datetime, Utc)),
+                        Err(e) => Err(Error::InternalError { error: e.into() }),
+                    }
+                } else {
+                    match chrono::DateTime::parse_from_rfc3339(str) {
+                        Ok(datetime) => Ok(datetime.with_timezone(&Utc)),
+                        Err(e) => Err(Error::InternalError { error: e.into() }),
+                    }
+                }
+            }
+            _ => {
+                return Err(Error::InvalidType {
+                    expected: "Timestamp".to_string(),
+                    actual: array.data_type().to_string(),
+                });
+            }
         }
     }
 }
@@ -221,6 +250,7 @@ mod tests {
         assert_eq!(f32::decode(&Float32Array::from(vec![f32::MAX]), 0), f32::MAX);
         assert_eq!(f64::decode(&Float64Array::from(vec![f64::MAX]), 0), f64::MAX);
         assert!(bool::decode(&BooleanArray::from(vec![true]), 0));
+        assert!(bool::decode(&Int64Array::from(vec![1]), 0));
         assert_eq!(String::decode(&StringArray::from(vec!["test".to_string()]), 0), "test");
     }
 
