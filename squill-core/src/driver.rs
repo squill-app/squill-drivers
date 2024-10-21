@@ -1,6 +1,7 @@
 use crate::parameters::Parameters;
 use arrow_array::RecordBatch;
 
+use arrow_schema::SchemaRef;
 #[cfg(any(test, feature = "mock"))]
 use mockall::automock;
 
@@ -62,6 +63,13 @@ pub trait DriverStatement {
     ///
     /// Returns an iterator over the record batches returned by the statement.
     fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>>;
+
+    /// Returns the underlying schema of the prepared statement.
+    ///
+    /// The schema is the schema of the result set returned by the statement.
+    /// # Panics
+    /// This method may panic if the method is called before the statement is executed via a call to {{query}}.
+    fn schema(&self) -> SchemaRef;
 }
 
 #[cfg_attr(any(test, feature = "mock"), automock)]

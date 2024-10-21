@@ -1,4 +1,5 @@
 use arrow_array::RecordBatch;
+use duckdb::arrow::datatypes::SchemaRef;
 use squill_core::driver::{DriverStatement, Result};
 use squill_core::parameters::Parameters;
 use squill_core::Error;
@@ -40,6 +41,10 @@ impl DriverStatement for DuckDBStatement<'_> {
             Ok(_affected_rows) => Ok(Box::new(self.clone())),
             Err(error) => Err(error.into()),
         }
+    }
+
+    fn schema(&self) -> SchemaRef {
+        self.inner.borrow().schema().clone()
     }
 }
 

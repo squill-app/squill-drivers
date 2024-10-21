@@ -48,6 +48,16 @@ impl DriverStatement for SqliteStatement<'_> {
     }
 
     fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+        let schema = self.schema();
+        Ok(Box::new(SqliteRows {
+            inner: self.inner.raw_query(),
+            options: self.options.clone(),
+            schema: RefCell::new(schema),
+        }))
+    }
+
+    /// Returns the underlying schema of the prepared statement.
+    fn schema(&self) -> SchemaRef {
         let fields: Vec<Field> = self
             .inner
             .columns()
@@ -67,12 +77,7 @@ impl DriverStatement for SqliteStatement<'_> {
                 Field::new(name, data_type, true)
             })
             .collect::<Vec<Field>>();
-        let schema = Arc::new(Schema::new(fields));
-        Ok(Box::new(SqliteRows {
-            inner: self.inner.raw_query(),
-            options: self.options.clone(),
-            schema: RefCell::new(schema),
-        }))
+        Arc::new(Schema::new(fields))
     }
 }
 

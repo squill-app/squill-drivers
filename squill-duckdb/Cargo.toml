@@ -9,7 +9,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-duckdb = { version = "1.0.0", features = [] }
+duckdb = { version = "1.1.1", features = [] }
 arrow-array = { workspace = true }
 squill-core = { workspace = true }
 url = { workspace = true }

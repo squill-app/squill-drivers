@@ -30,8 +30,8 @@ squill-sqlite = { version = "0.1.0", path = "./squill-sqlite" }
 squill-drivers = { version = "0.1.0", path = "./squill-drivers" }
 squill-serde = { version = "0.1.0", path = "./squill-serde" }
 tracing = "0.1.40"
-arrow-schema = { version = "52" }
-arrow-array = { version = "52", default-features = false, features = [
+arrow-schema = { version = "53" }
+arrow-array = { version = "53", default-features = false, features = [
     "chrono-tz",
 ] }
 tempfile = "3.10.1"
