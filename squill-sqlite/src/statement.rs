@@ -25,6 +25,32 @@ pub(crate) struct SqliteStatement<'c> {
     pub(crate) options: SqliteOptionsRef,
 }
 
+impl SqliteStatement<'_> {
+    /// Returns the underlying schema of the prepared statement.
+    fn schema(&self) -> SchemaRef {
+        let fields: Vec<Field> = self
+            .inner
+            .columns()
+            .iter()
+            .map(|column| {
+                let name = column.name().to_string();
+                let data_type = match column.decl_type() {
+                    Some("INTEGER") => arrow_schema::DataType::Int64,
+                    Some("TEXT") => arrow_schema::DataType::Utf8,
+                    Some("REAL") => arrow_schema::DataType::Float64,
+                    Some("BLOB") => arrow_schema::DataType::Binary,
+                    // If the column type is NULL or there is no decl_type, the column is considered as a NULL type.
+                    // For expressions, the decl_type is always NULL so while adding values to the array for this column
+                    // we will eventually need to have this type inferred from the data received.
+                    _ => arrow_schema::DataType::Null,
+                };
+                Field::new(name, data_type, true)
+            })
+            .collect::<Vec<Field>>();
+        Arc::new(Schema::new(fields))
+    }
+}
+
 impl DriverStatement for SqliteStatement<'_> {
     fn bind(&mut self, parameters: Parameters) -> Result<()> {
         let expected = self.inner.parameter_count();
@@ -54,30 +80,6 @@ impl DriverStatement for SqliteStatement<'_> {
             options: self.options.clone(),
             schema: RefCell::new(schema),
         }))
-    }
-
-    /// Returns the underlying schema of the prepared statement.
-    fn schema(&self) -> SchemaRef {
-        let fields: Vec<Field> = self
-            .inner
-            .columns()
-            .iter()
-            .map(|column| {
-                let name = column.name().to_string();
-                let data_type = match column.decl_type() {
-                    Some("INTEGER") => arrow_schema::DataType::Int64,
-                    Some("TEXT") => arrow_schema::DataType::Utf8,
-                    Some("REAL") => arrow_schema::DataType::Float64,
-                    Some("BLOB") => arrow_schema::DataType::Binary,
-                    // If the column type is NULL or there is no decl_type, the column is considered as a NULL type.
-                    // For expressions, the decl_type is always NULL so while adding values to the array for this column
-                    // we will eventually need to have this type inferred from the data received.
-                    _ => arrow_schema::DataType::Null,
-                };
-                Field::new(name, data_type, true)
-            })
-            .collect::<Vec<Field>>();
-        Arc::new(Schema::new(fields))
     }
 }
 
