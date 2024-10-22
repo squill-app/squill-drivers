@@ -45,23 +45,25 @@ pub trait DriverConnection {
 /// A prepared statement can be executed multiple times with different parameters.
 #[cfg_attr(any(test, feature = "mock"), automock)]
 pub trait DriverStatement {
-    /// Bind the parameters to the statement.
+    /// Execute the statement.
     ///
-    /// The latest bound parameters will be used when the statement is executed via {{execute}} or {{query}}.
     /// The number of parameters must match the number of placeholders in the statement otherwise an error will be
     /// returned.
-    fn bind(&mut self, parameters: Parameters) -> Result<()>;
-
-    /// Execute the statement.
     ///
     /// Returns the number of rows affected by the statement.
     /// Executing a statement that starts with "SELECT" my return an error depending on the driver implementation.
-    fn execute(&mut self) -> Result<u64>;
+    fn execute(&mut self, parameters: Option<Parameters>) -> Result<u64>;
 
     /// Execute a `SELECT` statement.
     ///
+    /// The number of parameters must match the number of placeholders in the statement otherwise an error will be
+    /// returned.
+    ///
     /// Returns an iterator over the record batches returned by the statement.
-    fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>>;
+    fn query<'s>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>>;
 }
 
 #[cfg_attr(any(test, feature = "mock"), automock)]

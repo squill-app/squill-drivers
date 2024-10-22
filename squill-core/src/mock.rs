@@ -21,28 +21,23 @@ use arrow_array::RecordBatch;
 /// assert!(conn.prepare("XINSERT").is_err());
 /// assert!(conn.prepare("SELECT 1").is_ok());
 ///
-/// // Calling `bind` should return an error if the number of parameters does not match the number of placeholders
-/// // let mut stmt = conn.prepare("SELECT ?").unwrap();
-/// // assert!(stmt.bind(params!(1, 2)).is_err());
-/// // assert!(stmt.bind(params!(1)).is_ok());
-///
 /// // Calling `execute` should return an error if the statement starts with "SELECT"
 /// let mut stmt = conn.prepare("INSERT").unwrap();
-/// assert!(stmt.execute().is_ok());
+/// assert!(stmt.execute(None).is_ok());
 /// let mut stmt = conn.prepare("SELECT 1").unwrap();
-/// assert!(stmt.execute().is_err());
+/// assert!(stmt.execute(None).is_err());
 ///
 /// // Calling `query` should return an error if the statement does not start with "SELECT" followed by a number
 /// let mut stmt = conn.prepare("SELECT 1").unwrap(); // positive number returns a single batch with the number of records
-/// assert!(stmt.query().is_ok());
+/// assert!(stmt.query(None).is_ok());
 /// let mut stmt = conn.prepare("SELECT 0").unwrap(); // return an empty iterator
-/// let mut iter = stmt.query().unwrap();
+/// let mut iter = stmt.query(None).unwrap();
 /// assert!(iter.next().is_none());
 /// let mut stmt = conn.prepare("SELECT -1").unwrap(); // negative number an iterator that will fail at the first iteration
-/// let mut iter = stmt.query().unwrap();
+/// let mut iter = stmt.query(None).unwrap();
 /// assert!(iter.next().unwrap().is_err());
 /// let mut stmt = conn.prepare("INSERT 1").unwrap(); // anything else returns an error
-/// assert!(stmt.query().is_err());
+/// assert!(stmt.query(None).is_err());
 /// ```
 impl MockDriverFactory {
     pub fn register_with_default(schemes: &'static [&'static str]) {
@@ -62,21 +57,31 @@ impl MockDriverFactory {
 
 impl MockDriverStatement {
     pub fn with_default(stmt: String) -> MockDriverStatement {
-        let bind_stmt = stmt.clone();
+        // let bind_stmt = stmt.clone();
         let query_stmt = stmt.clone();
         let execute_stmt = stmt.clone();
         let mut mock_statement = MockDriverStatement::new();
+        /*
         mock_statement.expect_bind().returning(move |parameters| {
             match bind_stmt.matches('?').count().cmp(&parameters.len()) {
                 std::cmp::Ordering::Equal => Ok(()),
                 _ => Err("Invalid parameter count".into()),
             }
         });
-        mock_statement.expect_execute().returning(move || match execute_stmt.starts_with("SELECT ") {
-            false => Ok(1),
+        */
+        mock_statement.expect_execute().returning(move |parameters| match execute_stmt.starts_with("SELECT ") {
+            false => {
+                if parameters.is_some() && execute_stmt.matches('?').count() != parameters.unwrap().len() {
+                    return Err("Invalid parameter count".into());
+                }
+                Ok(1)
+            }
             true => Err("Invalid statement".into()),
         });
-        mock_statement.expect_query().returning(move || {
+        mock_statement.expect_query().returning(move |parameters| {
+            if parameters.is_some() && query_stmt.matches('?').count() != parameters.unwrap().len() {
+                return Err("Invalid parameter count".into());
+            }
             match regex::Regex::new(r"^SELECT\s+(-?[0-9]+)").unwrap().captures(query_stmt.as_str()) {
                 Some(captures) => {
                     let count = captures.get(1).unwrap().as_str().parse::<i64>().unwrap();

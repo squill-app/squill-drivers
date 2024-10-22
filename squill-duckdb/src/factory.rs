@@ -12,7 +12,8 @@ impl DriverFactory for DuckDBFactory {
     }
 
     fn open(&self, uri: &str) -> Result<Box<dyn DriverConnection>> {
-        let parsed_uri = url::Url::parse(uri).map_err(|_| Error::InvalidUri { uri: uri.to_string() })?;
+        let parsed_uri =
+            url::Url::parse(uri).map_err(|e| Error::InvalidUri { uri: uri.to_string(), reason: e.to_string() })?;
         let mut path = parsed_uri.path();
         // Initialization of the configuration from the URI query parameters
         // See: https://duckdb.org/docs/configuration/overview.html#configuration-reference

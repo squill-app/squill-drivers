@@ -1,10 +1,9 @@
 use crate::connection::{into_error, Command, Handle};
 use crate::{await_on, RecordBatchStream};
-use futures::future::{err, ready, BoxFuture};
+use futures::future::{err, BoxFuture};
 use squill_core::parameters::Parameters;
 use squill_core::{Error, Result};
 use tokio::sync::oneshot;
-use tracing::{event, Level};
 
 /// A prepared statement.
 ///
@@ -23,20 +22,6 @@ impl Statement<'_> {
         Self { handle, command_tx, phantom: std::marker::PhantomData }
     }
 
-    pub fn bind(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<()>> {
-        match parameters {
-            Some(parameters) => {
-                event!(Level::DEBUG, message = %{ format!("Binding with: {:?}", parameters) });
-                let (tx, rx) = oneshot::channel();
-                if let Err(e) = self.command_tx.send(Command::Bind { handle: self.handle, parameters, tx }) {
-                    return Box::pin(err::<(), Error>(Error::DriverError { error: e.into() }));
-                }
-                await_on!(rx)
-            }
-            None => Box::pin(ready(Ok(()))),
-        }
-    }
-
     pub fn execute(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<u64>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.command_tx.send(Command::ExecutePreparedStatement { handle: self.handle, parameters, tx })
@@ -46,9 +31,9 @@ impl Statement<'_> {
         await_on!(rx)
     }
 
-    pub fn query(&mut self) -> BoxFuture<'_, Result<RecordBatchStream<'_>>> {
+    pub fn query(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<RecordBatchStream<'_>>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Query { handle: self.handle, parameters: None, tx }) {
+        if let Err(e) = self.command_tx.send(Command::Query { handle: self.handle, parameters, tx }) {
             return Box::pin(err::<RecordBatchStream<'_>, Error>(Error::DriverError { error: e.into() }));
         }
         Box::pin(async move {

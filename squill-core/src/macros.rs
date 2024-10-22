@@ -34,6 +34,6 @@ macro_rules! query_arrow {
                 $rest.into(),
             )*
         ];
-        $statement.query_with_params($crate::parameters::Parameters::Positional(bind_parameters))
+        $statement.query(Some($crate::parameters::Parameters::Positional(bind_parameters)))
     }};
 }

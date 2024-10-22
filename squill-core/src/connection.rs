@@ -55,19 +55,12 @@ impl Connection {
     where
         'c: 's,
     {
-        // A closure to bind parameters and execute the statement in order to avoid code duplication.
-        let bind_and_execute = |statement: &mut Statement<'s>| -> Result<u64> {
-            if let Some(parameters) = parameters {
-                statement.bind(parameters)?;
-            }
-            statement.execute()
-        };
         match command.into() {
             StatementRef::Str(s) => {
                 let mut statement = self.prepare(s)?;
-                bind_and_execute(&mut statement)
+                statement.execute(parameters)
             }
-            StatementRef::Statement(statement) => bind_and_execute(statement),
+            StatementRef::Statement(statement) => statement.execute(parameters),
         }
     }
 
@@ -80,10 +73,7 @@ impl Connection {
     where
         's: 'i,
     {
-        if parameters.is_some() {
-            statement.bind(parameters.unwrap())?;
-        }
-        statement.query()
+        statement.query(parameters)
     }
 
     /// Query a statement and return an iterator of [Row].

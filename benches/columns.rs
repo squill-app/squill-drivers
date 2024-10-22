@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use squill_drivers::{Connection, Rows, Statement};
 
 fn using_get(stmt: &mut Statement) {
-    let rows: Rows = stmt.query().unwrap().into();
+    let rows: Rows = stmt.query(None).unwrap().into();
     for row in rows {
         let _: i32 = row.unwrap().get(0);
     }

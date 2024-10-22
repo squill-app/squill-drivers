@@ -9,7 +9,7 @@ pub(crate) struct DuckDBStatement<'c> {
     pub(crate) inner: Rc<RefCell<duckdb::Statement<'c>>>,
 }
 
-impl DriverStatement for DuckDBStatement<'_> {
+impl DuckDBStatement<'_> {
     fn bind(&mut self, parameters: Parameters) -> Result<()> {
         let mut inner = self.inner.borrow_mut();
         let expected = inner.parameter_count();
@@ -27,15 +27,26 @@ impl DriverStatement for DuckDBStatement<'_> {
             }
         }
     }
+}
 
-    fn execute(&mut self) -> Result<u64> {
+impl DriverStatement for DuckDBStatement<'_> {
+    fn execute(&mut self, parameters: Option<Parameters>) -> Result<u64> {
+        if let Some(parameters) = parameters {
+            self.bind(parameters)?;
+        }
         match self.inner.borrow_mut().raw_execute() {
             Ok(affected_rows) => Ok(affected_rows as u64),
             Err(error) => Err(error.into()),
         }
     }
 
-    fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+    fn query<'s>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+        if let Some(parameters) = parameters {
+            self.bind(parameters)?;
+        }
         match self.inner.borrow_mut().raw_execute() {
             Ok(_affected_rows) => Ok(Box::new(self.clone())),
             Err(error) => Err(error.into()),

@@ -24,19 +24,26 @@ impl DriverFactory for SqliteFactory {
         // Parse URI parameters to set the options and connection open flags.
         let mut options = SqliteOptions::default();
         let mut flags = rusqlite::OpenFlags::SQLITE_OPEN_URI;
-        let parsed_uri = url::Url::parse(&sqlite_uri).map_err(|_| Error::InvalidUri { uri: uri.to_string() })?;
+        let parsed_uri = url::Url::parse(&sqlite_uri)
+            .map_err(|e| Error::InvalidUri { uri: uri.to_string(), reason: e.to_string() })?;
         parsed_uri.query_pairs().try_for_each(|(key, value)| {
             if key == "max_batch_rows" {
                 if let Ok(value) = value.parse::<usize>() {
                     options.max_batch_rows = value;
                 } else {
-                    return Err(Error::InvalidUri { uri: uri.to_string() });
+                    return Err(Error::InvalidUri {
+                        uri: uri.to_string(),
+                        reason: "Invalid value for max_batch_rows".to_string(),
+                    });
                 }
             } else if key == "max_batch_bytes" {
                 if let Ok(max_batch_bytes) = value.parse::<bytesize::ByteSize>() {
                     options.max_batch_bytes = max_batch_bytes.0 as usize;
                 } else {
-                    return Err(Error::InvalidUri { uri: uri.to_string() });
+                    return Err(Error::InvalidUri {
+                        uri: uri.to_string(),
+                        reason: "Invalid value for max_batch_bytes".to_string(),
+                    });
                 }
             } else if key == "mode" {
                 // Despite using `SQLITE_OPEN_URI` the documentation is explicit about the flags that must include
@@ -51,7 +58,12 @@ impl DriverFactory for SqliteFactory {
                     "memory" => {
                         flags |= rusqlite::OpenFlags::SQLITE_OPEN_MEMORY | rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
                     }
-                    _ => return Err(Error::InvalidUri { uri: uri.to_string() }),
+                    _ => {
+                        return Err(Error::InvalidUri {
+                            uri: uri.to_string(),
+                            reason: "Invalid value for mode".to_string(),
+                        })
+                    }
                 }
             }
             Ok(())

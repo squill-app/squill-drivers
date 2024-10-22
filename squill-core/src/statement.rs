@@ -11,30 +11,21 @@ pub struct Statement<'c> {
 }
 
 impl Statement<'_> {
-    pub fn bind(&mut self, parameters: Parameters) -> Result<()> {
-        self.inner.bind(parameters).map_err(Error::from)
+    pub fn execute(&mut self, parameters: Option<Parameters>) -> Result<u64> {
+        self.inner.execute(parameters).map_err(Error::from)
     }
 
-    pub fn execute(&mut self) -> Result<u64> {
-        self.inner.execute().map_err(Error::from)
-    }
-
-    pub fn query<'s: 'i, 'i>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'i>> {
-        match self.inner.query() {
+    pub fn query<'s: 'i, 'i>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 'i>> {
+        match self.inner.query(parameters) {
             Ok(iterator) => {
                 let iterator = iterator.map(|result| result.map_err(Error::from));
                 Ok(Box::new(iterator))
             }
             Err(e) => Err(Error::from(e)),
         }
-    }
-
-    pub fn query_with_params<'s: 'i, 'i>(
-        &'s mut self,
-        parameters: Parameters,
-    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
-        self.inner.bind(parameters)?;
-        self.query()
     }
 }
 

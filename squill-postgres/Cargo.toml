@@ -1,0 +1,21 @@
+[package]
+name = "squill-postgres"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+postgres = { version = "0.19", features = ["with-uuid-1", "with-chrono-0_4"] }
+squill-core = { workspace = true }
+url = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+
+[dev-dependencies]
+ctor = { workspace = true }
+tempfile = { workspace = true }
+tokio-test = { workspace = true }

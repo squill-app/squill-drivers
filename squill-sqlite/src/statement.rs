@@ -51,7 +51,7 @@ impl SqliteStatement<'_> {
     }
 }
 
-impl DriverStatement for SqliteStatement<'_> {
+impl SqliteStatement<'_> {
     fn bind(&mut self, parameters: Parameters) -> Result<()> {
         let expected = self.inner.parameter_count();
         match parameters {
@@ -68,12 +68,23 @@ impl DriverStatement for SqliteStatement<'_> {
             }
         }
     }
+}
 
-    fn execute(&mut self) -> Result<u64> {
+impl DriverStatement for SqliteStatement<'_> {
+    fn execute(&mut self, parameters: Option<Parameters>) -> Result<u64> {
+        if let Some(parameters) = parameters {
+            self.bind(parameters)?;
+        }
         Ok(self.inner.raw_execute().map_err(driver_error)? as u64)
     }
 
-    fn query<'s>(&'s mut self) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+    fn query<'s>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+        if let Some(parameters) = parameters {
+            self.bind(parameters)?;
+        }
         let schema = self.schema();
         Ok(Box::new(SqliteRows {
             inner: self.inner.raw_query(),

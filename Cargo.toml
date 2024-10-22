@@ -27,6 +27,8 @@ squill-core = { version = "0.1.0", path = "./squill-core" }
 squill-async = { version = "0.1.0", path = "./squill-async" }
 squill-duckdb = { version = "0.1.0", path = "./squill-duckdb" }
 squill-sqlite = { version = "0.1.0", path = "./squill-sqlite" }
+squill-postgres = { version = "0.1.0", path = "./squill-postgres" }
+squill-mysql = { version = "0.1.0", path = "./squill-mysql" }
 squill-drivers = { version = "0.1.0", path = "./squill-drivers" }
 squill-serde = { version = "0.1.0", path = "./squill-serde" }
 tracing = "0.1.40"
@@ -66,6 +68,8 @@ squill-core = { workspace = true }
 squill-duckdb = { workspace = true, optional = true }
 squill-async = { workspace = true, optional = true }
 squill-sqlite = { workspace = true, optional = true }
+squill-postgres = { workspace = true, optional = true }
+squill-mysql = { workspace = true, optional = true }
 squill-serde = { workspace = true, optional = true}
 
 [dev-dependencies]
@@ -79,6 +83,8 @@ duckdb = ["squill-duckdb"]
 duckdb-bundled = ["squill-duckdb/bundled"]
 async = ["squill-async"]
 sqlite = ["squill-sqlite"]
+postgres = ["squill-postgres"]
+mysql = ["squill-mysql"]
 serde = ["squill-serde"]
 
 [[example]]

@@ -250,11 +250,6 @@ impl Connection {
 }
 
 pub(crate) enum Command {
-    Bind {
-        handle: Handle,
-        parameters: Parameters,
-        tx: oneshot::Sender<driver::Result<()>>,
-    },
     Close {
         tx: oneshot::Sender<driver::Result<()>>,
     },
@@ -318,17 +313,6 @@ impl Connection {
             let command = command_rx.recv();
             match command {
                 //
-                // Bind parameters to a prepared statement.
-                //
-                Ok(Command::Bind { handle, parameters, tx }) => {
-                    if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        send_response_and_break_on_error!(tx, stmt.bind(parameters));
-                    } else {
-                        send_response_and_break_on_error!(tx, Err("Invalid statement handle".into()));
-                    }
-                }
-
-                //
                 // Close the connection.
                 //
                 Ok(Command::Close { tx }) => {
@@ -362,16 +346,8 @@ impl Connection {
                 // the prepared statement and then run a second command to execute it.
                 //
                 Ok(Command::Execute { statement, parameters, tx }) => match inner_conn.prepare(&statement) {
-                    Ok(mut stmt) => match parameters {
-                        Some(parameters) => match stmt.bind(parameters) {
-                            Ok(_) => send_response_and_break_on_error!(tx, stmt.execute()),
-                            Err(e) => send_response_and_break_on_error!(tx, Err(e)),
-                        },
-                        None => send_response_and_break_on_error!(tx, stmt.execute()),
-                    },
-                    Err(e) => {
-                        send_response_and_break_on_error!(tx, Err(e));
-                    }
+                    Ok(mut stmt) => send_response_and_break_on_error!(tx, stmt.execute(parameters)),
+                    Err(e) => send_response_and_break_on_error!(tx, Err(e)),
                 },
 
                 //
@@ -379,13 +355,7 @@ impl Connection {
                 //
                 Ok(Command::ExecutePreparedStatement { handle, parameters, tx }) => {
                     if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        match parameters {
-                            Some(parameters) => match stmt.bind(parameters) {
-                                Ok(_) => send_response_and_break_on_error!(tx, stmt.execute()),
-                                Err(e) => send_response_and_break_on_error!(tx, Err(e)),
-                            },
-                            None => send_response_and_break_on_error!(tx, stmt.execute()),
-                        }
+                        send_response_and_break_on_error!(tx, stmt.execute(parameters));
                     } else {
                         send_response_and_break_on_error!(tx, Err("Invalid statement handle".into()));
                     }
@@ -401,13 +371,7 @@ impl Connection {
                 //
                 Ok(Command::Query { handle, parameters, tx }) => {
                     if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        if let Some(parameters) = parameters {
-                            if let Err(e) = stmt.bind(parameters) {
-                                send_response_and_break_on_error!(tx, Err(e));
-                                continue;
-                            }
-                        }
-                        match stmt.query() {
+                        match stmt.query(parameters) {
                             Ok(mut rows) => {
                                 send_response_and_break_on_error!(tx, Ok(()));
                                 loop {
@@ -542,14 +506,6 @@ mod tests {
         let conn = Connection::open("mock://").await.unwrap();
         assert!(conn.prepare("SELECT 1").await.is_ok());
         assert!(conn.prepare("XINSERT").await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_bind() {
-        let conn = Connection::open("mock://").await.unwrap();
-        let mut stmt = conn.prepare("SELECT ?").await.unwrap();
-        assert!(stmt.bind(params!(1)).await.is_ok());
-        assert!(stmt.bind(params!(1, 2)).await.is_err());
     }
 
     #[tokio::test]
@@ -690,7 +646,7 @@ mod tests {
 
         // Test using Statement::query
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = stmt.query().await.unwrap();
+        let mut iter = stmt.query(None).await.unwrap();
         assert!(iter.next().await.is_some());
     }
 }

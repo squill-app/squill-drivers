@@ -38,7 +38,7 @@ impl Factory {
                 None => return Err(Error::DriverNotFound { scheme: scheme.to_string() }),
             }
         }
-        Err(Error::InvalidUri { uri: uri.to_string() })
+        Err(Error::InvalidUri { uri: uri.to_string(), reason: "No scheme found".to_string() })
     }
 
     /// Make a file path suitable for an URI.

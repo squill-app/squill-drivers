@@ -54,6 +54,7 @@ pub enum Error {
 
     InvalidUri {
         uri: String,
+        reason: String,
     },
 
     NotFound,
@@ -117,7 +118,7 @@ impl std::fmt::Display for Error {
             Error::InvalidType { expected, actual } => {
                 write!(f, "Invalid type: expected '{}', actual '{}'", expected, actual)
             }
-            Error::InvalidUri { uri } => write!(f, "Invalid URI: {}", uri),
+            Error::InvalidUri { uri, reason } => write!(f, "Invalid URI: {} (reason: {})", uri, reason),
             Error::NotFound => write!(f, "Not found"),
             Error::OutOfBounds { index } => write!(f, "Out of bounds index {}", index),
             Error::OutOfMemory { error } => write!(f, "{}", error),
