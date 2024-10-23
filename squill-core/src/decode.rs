@@ -188,6 +188,13 @@ impl Decode for chrono::DateTime<chrono::Utc> {
                     }
                 }
             }
+            DataType::Float64 => {
+                let secs = array.as_any().downcast_ref::<arrow_array::Float64Array>().unwrap().value(index);
+                match chrono::DateTime::<Utc>::from_timestamp(secs as i64, 0) {
+                    Some(datetime) => Ok(datetime),
+                    None => Err(Error::InternalError { error: format!("Out of range datetime: {}s.", secs).into() }),
+                }
+            }
             _ => {
                 return Err(Error::InvalidType {
                     expected: "Timestamp".to_string(),

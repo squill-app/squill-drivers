@@ -10,11 +10,10 @@ impl DriverConnection for Postgres {
         Ok(())
     }
 
-    fn prepare<'c: 's, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
-        let mut client = self.client.borrow_mut();
+    fn prepare<'c: 's, 's>(&'c mut self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
         Ok(Box::new(PostgresStatement {
-            inner: client.prepare(statement).map_err(into_driver_error)?,
-            client: self.client.clone(),
+            inner: self.client.prepare(statement).map_err(into_driver_error)?,
+            client: &mut self.client,
             phantom: std::marker::PhantomData,
         }))
     }

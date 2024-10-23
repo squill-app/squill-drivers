@@ -1,5 +1,6 @@
 use crate::parameters::Parameters;
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 
 #[cfg(any(test, feature = "mock"))]
 use mockall::automock;
@@ -29,7 +30,7 @@ pub trait DriverConnection {
     /// If the statement used parameters, the statement should be prepared with placeholders for the parameters. The
     /// placeholders themselves are depending on the driver implementation. For example, the placeholders could be
     /// `$1, $2, ...` when using PostgtreSQL or `?` when using SQLite and MySQL.
-    fn prepare<'c, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>>
+    fn prepare<'c, 's>(&'c mut self, statement: &str) -> Result<Box<dyn DriverStatement + 's>>
     where
         'c: 's;
 
@@ -64,6 +65,19 @@ pub trait DriverStatement {
         &'s mut self,
         parameters: Option<Parameters>,
     ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>>;
+
+    /// Get the schema of the last [`query`](Self::query) execution of the statement.
+    ///
+    /// Returns the schema of the record batches from the last [`query`](Self::query) execution.
+    /// This function is useful when a statement does not return any rows but the schema is still needed.
+    ///
+    /// Because this function is using a reference to the statement, it's not possible to call this function while the
+    /// iterator returned by [`query`](Self::query) is still alive. This function should be called after the iterator
+    /// returned by [`query`](Self::query) is consumed at least once and after the iterator is dropped.
+    ///
+    /// WARNING: This function may panic if the statement was not queried before calling this function or if the
+    /// iterator returned by [`query`](Self::query) was not consumed at least once.
+    fn schema(&self) -> SchemaRef;
 }
 
 #[cfg_attr(any(test, feature = "mock"), automock)]

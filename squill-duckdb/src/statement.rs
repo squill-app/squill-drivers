@@ -1,4 +1,5 @@
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use squill_core::driver::{DriverStatement, Result};
 use squill_core::parameters::Parameters;
 use squill_core::Error;
@@ -52,6 +53,11 @@ impl DriverStatement for DuckDBStatement<'_> {
             Err(error) => Err(error.into()),
         }
     }
+
+    fn schema(&self) -> SchemaRef {
+        let schema = self.inner.borrow().schema();
+        schema
+    }
 }
 
 /// Iterator over the record batches.
@@ -85,6 +91,7 @@ mod tests {
     use squill_core::decode::Decode;
     use squill_core::values::{TimeUnit, Value};
     use squill_core::{execute, query_arrow};
+    use tokio_test::assert_ok;
     use uuid::Uuid;
 
     #[test]
@@ -371,5 +378,18 @@ mod tests {
             let mut rows = query_arrow!(stmt, i).unwrap();
             assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), i);
         }
+    }
+
+    #[test]
+    fn test_schema() {
+        let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let mut stmt = assert_ok!(conn.prepare("SELECT 1 AS col_one WHERE 1=2"));
+        let mut it = assert_ok!(query_arrow!(stmt));
+        assert!(it.next().is_none());
+        drop(it); // needed to call schema
+        let schema = stmt.schema();
+        assert_eq!(schema.fields().len(), 1);
+        assert_eq!(schema.field(0).name(), "col_one");
+        assert_eq!(schema.field(0).data_type().to_string(), "Int32");
     }
 }

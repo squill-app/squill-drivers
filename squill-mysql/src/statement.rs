@@ -1,4 +1,5 @@
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use squill_core::driver::{DriverStatement, Result};
 use squill_core::parameters::Parameters;
 
@@ -16,6 +17,10 @@ impl DriverStatement for MySqlStatement<'_> {
         &'s mut self,
         _parameters: Option<Parameters>,
     ) -> Result<Box<dyn Iterator<Item = Result<RecordBatch>> + 's>> {
+        todo!()
+    }
+
+    fn schema(&self) -> SchemaRef {
         todo!()
     }
 }

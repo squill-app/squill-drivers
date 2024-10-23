@@ -68,7 +68,9 @@ pub enum Error {
         error: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    UnsupportedDataType,
+    UnsupportedDataType {
+        data_type: String,
+    },
 }
 
 impl From<crate::driver::DriverError> for Error {
@@ -122,7 +124,7 @@ impl std::fmt::Display for Error {
             Error::NotFound => write!(f, "Not found"),
             Error::OutOfBounds { index } => write!(f, "Out of bounds index {}", index),
             Error::OutOfMemory { error } => write!(f, "{}", error),
-            Error::UnsupportedDataType => write!(f, "Unsupported type"),
+            Error::UnsupportedDataType { data_type } => write!(f, "Unsupported type: {}", data_type),
         }
     }
 }

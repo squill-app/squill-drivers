@@ -38,7 +38,7 @@ impl Connection {
     ///
     /// Return a [Statement] that can be later used to by `query` or `execute` functions. A prepared statement can be
     /// used multiple times with different parameters.    
-    pub fn prepare<S: AsRef<str>>(&self, statement: S) -> Result<Statement<'_>> {
+    pub fn prepare<S: AsRef<str>>(&mut self, statement: S) -> Result<Statement<'_>> {
         Ok(Statement { inner: self.inner.prepare(statement.as_ref())? })
     }
 
@@ -282,7 +282,7 @@ mod tests {
     fn test_connection() {
         // Test connection open
         assert!(Connection::open("unknown://").is_err());
-        let conn = Connection::open("mock://").unwrap();
+        let mut conn = Connection::open("mock://").unwrap();
         assert_eq!(conn.driver_name(), "mock");
 
         // Test connection prepare

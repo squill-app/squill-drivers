@@ -2595,12 +2595,14 @@ name = "squill-duckdb"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
+ "arrow-schema",
  "chrono",
  "ctor",
  "duckdb",
  "rust_decimal",
  "squill-core",
  "tempfile",
+ "tokio-test",
  "url",
  "uuid",
 ]
@@ -2625,8 +2627,11 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
+ "bytes",
  "ctor",
  "postgres",
+ "postgres-protocol",
+ "postgres-types",
  "squill-core",
  "tempfile",
  "tokio-test",

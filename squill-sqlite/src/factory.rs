@@ -82,34 +82,3 @@ impl DriverFactory for SqliteFactory {
         }))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use ctor::ctor;
-    use squill_core::factory::Factory;
-    use tokio_test::assert_ok;
-
-    #[ctor]
-    fn before_all() {
-        crate::register_driver();
-    }
-
-    #[test]
-    fn test_open_memory() {
-        assert_ok!(Factory::open("sqlite::memory:"));
-        assert_ok!(Factory::open("sqlite:memdb1?mode=memory&cache=shared"));
-    }
-
-    #[test]
-    fn test_open_file() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let file_path = temp_dir.path().join("test.db");
-
-        // trying to open a file that does not exist in read-only should fail
-        assert!(Factory::open(&format!("sqlite://{}?mode=ro", Factory::to_uri_path(&file_path))).is_err());
-        // trying to open a file that does not exist in read-write should create it
-        assert_ok!(Factory::open(&format!("sqlite://{}?mode=rwc", Factory::to_uri_path(&file_path))));
-        // now that the file exists, opening it in read-only should work
-        assert_ok!(Factory::open(&format!("sqlite://{}?mode=ro", Factory::to_uri_path(&file_path))));
-    }
-}

@@ -1,13 +1,13 @@
 #![forbid(unsafe_code)]
 
-pub mod connection;
+// pub mod connection;
 pub mod decode;
 pub mod driver;
 pub mod error;
 pub mod factory;
 pub mod macros;
 pub mod parameters;
-pub mod rows;
+// pub mod rows;
 pub mod statement;
 pub mod values;
 

@@ -2,6 +2,7 @@ use crate::driver::DriverStatement;
 use crate::parameters::Parameters;
 use crate::{Error, Result};
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 
 /// A prepared statement.
 ///
@@ -27,7 +28,13 @@ impl Statement<'_> {
             Err(e) => Err(Error::from(e)),
         }
     }
+
+    pub fn schema(&self) -> SchemaRef {
+        self.inner.schema()
+    }
 }
+
+/*
 
 /// An enum that can be either a string or a mutable reference to a statement.
 ///
@@ -69,3 +76,5 @@ impl<'r, 's> From<&'r mut Statement<'s>> for StatementRef<'r, 's> {
         StatementRef::Statement(statement)
     }
 }
+
+*/

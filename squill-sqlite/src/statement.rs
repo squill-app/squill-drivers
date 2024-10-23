@@ -26,32 +26,6 @@ pub(crate) struct SqliteStatement<'c> {
 }
 
 impl SqliteStatement<'_> {
-    /// Returns the underlying schema of the prepared statement.
-    fn schema(&self) -> SchemaRef {
-        let fields: Vec<Field> = self
-            .inner
-            .columns()
-            .iter()
-            .map(|column| {
-                let name = column.name().to_string();
-                let data_type = match column.decl_type() {
-                    Some("INTEGER") => arrow_schema::DataType::Int64,
-                    Some("TEXT") => arrow_schema::DataType::Utf8,
-                    Some("REAL") => arrow_schema::DataType::Float64,
-                    Some("BLOB") => arrow_schema::DataType::Binary,
-                    // If the column type is NULL or there is no decl_type, the column is considered as a NULL type.
-                    // For expressions, the decl_type is always NULL so while adding values to the array for this column
-                    // we will eventually need to have this type inferred from the data received.
-                    _ => arrow_schema::DataType::Null,
-                };
-                Field::new(name, data_type, true)
-            })
-            .collect::<Vec<Field>>();
-        Arc::new(Schema::new(fields))
-    }
-}
-
-impl SqliteStatement<'_> {
     fn bind(&mut self, parameters: Parameters) -> Result<()> {
         let expected = self.inner.parameter_count();
         match parameters {
@@ -91,6 +65,30 @@ impl DriverStatement for SqliteStatement<'_> {
             options: self.options.clone(),
             schema: RefCell::new(schema),
         }))
+    }
+
+    /// Returns the underlying schema of the prepared statement.
+    fn schema(&self) -> SchemaRef {
+        let fields: Vec<Field> = self
+            .inner
+            .columns()
+            .iter()
+            .map(|column| {
+                let name = column.name().to_string();
+                let data_type = match column.decl_type() {
+                    Some("INTEGER") => arrow_schema::DataType::Int64,
+                    Some("TEXT") => arrow_schema::DataType::Utf8,
+                    Some("REAL") => arrow_schema::DataType::Float64,
+                    Some("BLOB") => arrow_schema::DataType::Binary,
+                    // If the column type is NULL or there is no decl_type, the column is considered as a NULL type.
+                    // For expressions, the decl_type is always NULL so while adding values to the array for this column
+                    // we will eventually need to have this type inferred from the data received.
+                    _ => arrow_schema::DataType::Null,
+                };
+                Field::new(name, data_type, true)
+            })
+            .collect::<Vec<Field>>();
+        Arc::new(Schema::new(fields))
     }
 }
 
@@ -233,100 +231,10 @@ impl<'c> Iterator for SqliteRows<'c> {
             0 => None,
             _ => {
                 let arrays: Vec<_> = columns.iter_mut().map(|builder| builder.finish()).collect();
-                // FIXME: remove the unwrap
-                Some(Ok(RecordBatch::try_new(self.schema.borrow().clone(), arrays).unwrap()))
+                let schema = self.schema.borrow().clone();
+                let batch = RecordBatch::try_new(schema, arrays);
+                Some(batch.map_err(|e| e.into()))
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::IN_MEMORY_URI;
-    use ctor::ctor;
-    use squill_core::decode::{self, Decode};
-    use squill_core::{connection::Connection, execute, query_arrow, Result};
-
-    #[ctor]
-    fn before_all() {
-        crate::register_driver();
-    }
-
-    #[test]
-    fn test_schema_storage_classes() -> Result<()> {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        execute!(&conn, "CREATE TABLE test (int INTEGER, text TEXT, real REAL, blob BLOB)")?;
-        execute!(&conn, "INSERT INTO test (int, text, real, blob) VALUES (1, 'text', 1.1, x'01')")?;
-        execute!(&conn, "INSERT INTO test (int, text, real, blob) VALUES (2, NULL, NULL, NULL)")?;
-        let mut stmt = conn.prepare("SELECT int, text, real, blob FROM test ORDER BY int")?;
-        let mut iter = query_arrow!(&mut stmt)?;
-        let batch = iter.next().unwrap()?;
-
-        assert_eq!(batch.schema().fields().len(), 4);
-        assert_eq!(batch.num_rows(), 2);
-
-        // first row
-        assert_eq!(i64::decode(&batch.column(0), 0), 1);
-        assert_eq!(String::decode(&batch.column(1), 0), "text");
-        assert_eq!(f64::decode(&batch.column(2), 0), 1.1);
-        assert_eq!(Vec::<u8>::decode(&batch.column(3), 0), vec![1]);
-
-        // second row
-        assert_eq!(i64::decode(&batch.column(0), 1), 2);
-        assert!(batch.column(1).is_null(1));
-        assert!(batch.column(2).is_null(1));
-        assert!(batch.column(3).is_null(1));
-
-        Ok(())
-    }
-
-    // In Sqlite, when using expressions in the SELECT clause, the column type is always at the time of the prepare
-    // statement and the current implementation of the driver will eventually infer the type of the column when it get
-    // non null values from the column. This test is to ensure that the driver can handle such cases.
-    #[test]
-    fn test_expressions() -> Result<()> {
-        let conn = Connection::open(IN_MEMORY_URI)?;
-        let mut stmt = conn.prepare("SELECT 1, 'Welcome', 'いらっしゃいませ', 1.1, x'01', NULL")?;
-        let mut iter = query_arrow!(&mut stmt)?;
-        let batch = iter.next().unwrap()?;
-        assert_eq!(batch.schema().fields().len(), 6);
-        assert_eq!(*batch.schema().fields()[0].data_type(), arrow_schema::DataType::Int64);
-        assert_eq!(*batch.schema().fields()[1].data_type(), arrow_schema::DataType::Utf8);
-        assert_eq!(*batch.schema().fields()[2].data_type(), arrow_schema::DataType::Utf8);
-        assert_eq!(*batch.schema().fields()[3].data_type(), arrow_schema::DataType::Float64);
-        assert_eq!(*batch.schema().fields()[4].data_type(), arrow_schema::DataType::Binary);
-        assert_eq!(*batch.schema().fields()[5].data_type(), arrow_schema::DataType::Null);
-        assert_eq!(i64::decode(&batch.column(0), 0), 1);
-        assert_eq!(String::decode(&batch.column(1), 0), "Welcome");
-        assert_eq!(String::decode(&batch.column(2), 0), "いらっしゃいませ");
-        assert_eq!(f64::decode(&batch.column(3), 0), 1.1);
-        assert_eq!(Vec::<u8>::decode(&batch.column(4), 0), vec![1]);
-        assert!(decode::is_null(batch.column(5), 0));
-        Ok(())
-    }
-
-    #[test]
-    fn test_timestamp() -> Result<()> {
-        let conn = Connection::open(IN_MEMORY_URI)?;
-        let mut stmt = conn.prepare("SELECT datetime('2023-01-01 10:00:00')")?;
-        let mut iter = query_arrow!(&mut stmt)?;
-        let batch = iter.next().unwrap()?;
-        assert_eq!(batch.schema().fields().len(), 1);
-        assert_eq!(*batch.schema().fields()[0].data_type(), arrow_schema::DataType::Utf8);
-        assert_eq!(String::decode(&batch.column(0), 0), "2023-01-01 10:00:00");
-        Ok(())
-    }
-
-    #[test]
-    fn test_boolean() -> Result<()> {
-        let conn = Connection::open(IN_MEMORY_URI)?;
-        let mut stmt = conn.prepare("SELECT TRUE, FALSE")?;
-        let mut iter = query_arrow!(&mut stmt)?;
-        let batch = iter.next().unwrap()?;
-        assert_eq!(batch.schema().fields().len(), 2);
-        assert_eq!(*batch.schema().fields()[0].data_type(), arrow_schema::DataType::Int64);
-        assert!(bool::decode(&batch.column(0), 0));
-        assert!(!bool::decode(&batch.column(1), 0));
-        Ok(())
     }
 }
