@@ -162,9 +162,9 @@ mod tests {
 
     #[test]
     fn test_query_rows() {
-        let conn = Connection::open("mock://").unwrap();
+        let mut conn = Connection::open("mock://").unwrap();
         let mut stmt = conn.prepare("SELECT 2").unwrap();
-        let mut rows = conn.query_rows(&mut stmt, None).unwrap();
+        let mut rows = stmt.query_rows(None).unwrap();
         assert_eq!(rows.next().unwrap().unwrap().get::<_, i32>(0), 1);
         let row = rows.next().unwrap().unwrap();
         assert!(!row.is_null(0));
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_try_get() {
-        let conn = Connection::open("mock://").unwrap();
+        let mut conn = Connection::open("mock://").unwrap();
         let row = conn.query_row("SELECT 1", None).unwrap().unwrap();
         assert_eq!(row.try_get::<_, i32>(0).unwrap(), 1);
         assert!(matches!(row.try_get::<_, i64>(0), Err(Error::InvalidType { expected: _, actual: _ })));

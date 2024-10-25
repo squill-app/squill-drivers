@@ -10,7 +10,7 @@ impl DriverConnection for MySql {
         Ok(())
     }
 
-    fn prepare<'c: 's, 's>(&'c self, _statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
+    fn prepare<'c: 's, 's>(&'c mut self, _statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
         todo!()
     }
 }

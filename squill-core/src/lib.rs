@@ -1,13 +1,13 @@
 #![forbid(unsafe_code)]
 
-// pub mod connection;
+pub mod connection;
 pub mod decode;
 pub mod driver;
 pub mod error;
 pub mod factory;
 pub mod macros;
 pub mod parameters;
-// pub mod rows;
+pub mod rows;
 pub mod statement;
 pub mod values;
 
@@ -24,6 +24,7 @@ pub type Error = error::Error;
 
 /// A specialized `Result` type for this library.
 pub type Result<T> = std::result::Result<T, Error>;
+pub type DriverResult<T> = std::result::Result<T, Error>;
 
 /// Return a clean version of the input string for logging purposes.
 /// The returned statement is cleaned by removing all non significant characters.

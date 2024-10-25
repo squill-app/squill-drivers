@@ -1,9 +1,12 @@
-use crate::connection::{into_error, Command, Handle};
-use crate::{await_on, RecordBatchStream};
+use crate::connection::{into_error, Command};
+use crate::{await_on, RecordBatchStream, RowStream};
 use futures::future::{err, BoxFuture};
+use futures::StreamExt;
 use squill_core::parameters::Parameters;
+use squill_core::rows::Row;
 use squill_core::{Error, Result};
 use tokio::sync::oneshot;
+use tracing::debug;
 
 /// A prepared statement.
 ///
@@ -12,29 +15,39 @@ use tokio::sync::oneshot;
 /// Parameters can be bound using the [Statement::bind] method and are re-used for each execution until new parameters
 /// are bound.
 pub struct Statement<'c> {
-    pub(crate) handle: Handle,
+    /// The command sender is used to send commands to the connection thread.
     command_tx: crossbeam_channel::Sender<Command>,
+
+    /// This field is used to make sure the connection will be mut borrowed until the statement is dropped.
+    ///
+    /// This is important for two reasons:
+    /// - Make the async API consistent with the sync API.
+    /// - Make sure the client thread is on the right state to process the next command. When a statement is created
+    ///   the connection thread is only expecting command for the statement and will only process commands at the
+    ///   connection level once the statement is dropped.
     phantom: std::marker::PhantomData<&'c ()>,
 }
 
 impl Statement<'_> {
-    pub(crate) fn new(handle: Handle, command_tx: crossbeam_channel::Sender<Command>) -> Self {
-        Self { handle, command_tx, phantom: std::marker::PhantomData }
+    pub(crate) fn new(command_tx: crossbeam_channel::Sender<Command>) -> Self {
+        Self { command_tx, phantom: std::marker::PhantomData }
     }
 
     pub fn execute(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<u64>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::ExecutePreparedStatement { handle: self.handle, parameters, tx })
-        {
+        if let Err(e) = self.command_tx.send(Command::ExecutePreparedStatement { parameters, tx }) {
             return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
         }
         await_on!(rx)
     }
 
-    pub fn query(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<RecordBatchStream<'_>>> {
+    pub fn query<'s: 'i, 'i>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> BoxFuture<'i, Result<RecordBatchStream<'i>>> {
         let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Query { handle: self.handle, parameters, tx }) {
-            return Box::pin(err::<RecordBatchStream<'_>, Error>(Error::DriverError { error: e.into() }));
+        if let Err(e) = self.command_tx.send(Command::QueryPreparedStatement { parameters, tx }) {
+            return Box::pin(err::<RecordBatchStream<'i>, Error>(Error::DriverError { error: e.into() }));
         }
         Box::pin(async move {
             match rx.await {
@@ -44,36 +57,73 @@ impl Statement<'_> {
             }
         })
     }
+
+    /// Query a statement and return stream of Rows.
+    pub fn query_rows<'s: 'i, 'i>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> BoxFuture<'i, Result<RowStream<'i>>> {
+        Box::pin(async move {
+            let stream = self.query(parameters).await?;
+            Ok(RowStream::from(stream))
+        })
+    }
+
+    pub fn query_row(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<Option<Row>>> {
+        Box::pin(async move {
+            let mut stream = self.query_rows(parameters).await?;
+            let row = stream.next().await;
+            match row {
+                Some(Ok(row)) => Ok(Some(row)),
+                Some(Err(e)) => Err(e),
+                None => Ok(None),
+            }
+        })
+    }
+
+    pub fn query_map_row<F, T>(
+        &mut self,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> BoxFuture<'_, Result<Option<T>>>
+    where
+        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>
+            + std::marker::Send
+            + 'static,
+    {
+        Box::pin(async move {
+            let mut stream = self.query_rows(parameters).await?;
+            let row = stream.next().await;
+            match row {
+                Some(Ok(row)) => {
+                    let mapped = mapping_fn(row)?;
+                    Ok(Some(mapped))
+                }
+                Some(Err(e)) => Err(e),
+                None => Ok(None),
+            }
+        })
+    }
 }
 
 impl Drop for Statement<'_> {
+    /// Drop the statement.
+    ///
+    /// This function sends a command to drop the statement. The driver will confirm the drop by sending a message back.
+    /// We need to wait for the confirmation before dropping the statement otherwise the connection thread might still
+    /// be on the wrong state to process the next command.
     fn drop(&mut self) {
-        // We ignore the result because drop is not async and we cannot wait for full completion of the command anyway.
-        let _ = self.command_tx.send(Command::DropStatement { handle: self.handle });
-    }
-}
-
-/// An enum that can be either a string or a mutable reference to a statement.
-///
-/// This enum is used to allow some functions to accept either a string or a mutable reference to a statement.
-/// See [squill_core::statement::StatementRef] for an example.
-/// ```
-pub enum StatementRef<'r, 's> {
-    Str(&'r str),
-    Statement(&'r mut Statement<'s>),
-}
-
-/// Conversion of a [std::str] reference to [StatementRef].
-impl<'r, 's: 'r> From<&'s str> for StatementRef<'r, '_> {
-    fn from(s: &'s str) -> Self {
-        StatementRef::Str(s)
-    }
-}
-
-/// Conversion of a [Statement] mutable reference to [StatementRef].
-/// Create a `StatementRef` from a mutable reference to a statement.
-impl<'r, 's> From<&'r mut Statement<'s>> for StatementRef<'r, 's> {
-    fn from(statement: &'r mut Statement<'s>) -> Self {
-        StatementRef::Statement(statement)
+        let (tx, rx) = oneshot::channel();
+        match self.command_tx.send(Command::DropStatement { tx }) {
+            // FIXME: Not sure we actually need to wait for the confirmation.
+            Ok(()) => {
+                if let Err(e) = futures::executor::block_on(rx) {
+                    debug!("Error waiting for statement drop confirmation: {}", e);
+                }
+            }
+            Err(e) => {
+                debug!("Error dropping statement: {}", e);
+            }
+        }
     }
 }

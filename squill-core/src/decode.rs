@@ -242,7 +242,7 @@ mod tests {
     use rust_decimal::Decimal;
 
     #[test]
-    fn test_decode_primitive_types() {
+    fn test_primitive_types() {
         let int8_array = Int8Array::from(vec![i8::MIN, i8::MAX]);
         assert_eq!(i8::decode(&int8_array, 0), i8::MIN);
         assert_eq!(i8::decode(&int8_array, 1), i8::MAX);
@@ -262,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_uuid() {
+    fn test_uuid() {
         assert_eq!(
             uuid::Uuid::decode(&StringArray::from(vec!["5d94967a-ee15-4f60-9677-1a959fab2982"]), 0),
             uuid::Uuid::parse_str("5d94967a-ee15-4f60-9677-1a959fab2982").unwrap()
@@ -281,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_chrono() {
+    fn test_chrono() {
         use chrono::{DateTime, NaiveTime, Utc};
 
         let datetime = DateTime::parse_from_rfc3339("2024-07-03T08:56:05.001002003Z").unwrap();

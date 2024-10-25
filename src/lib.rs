@@ -24,7 +24,7 @@ pub use squill_core::statement::Statement;
 pub use squill_core::Result;
 
 // Re-export the macros.
-pub use squill_core::{execute, params, query_arrow};
+pub use squill_core::{execute, params};
 
 #[cfg(feature = "async")]
 pub mod futures {

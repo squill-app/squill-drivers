@@ -10,7 +10,7 @@ impl DriverConnection for DuckDB {
         DRIVER_NAME
     }
 
-    fn prepare<'c: 's, 's>(&'c self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
+    fn prepare<'c: 's, 's>(&'c mut self, statement: &str) -> Result<Box<dyn DriverStatement + 's>> {
         Ok(Box::new(DuckDBStatement { inner: Rc::new(RefCell::new(self.conn.prepare(statement)?)) }))
     }
 
@@ -27,7 +27,7 @@ impl DriverConnection for DuckDB {
 mod tests {
     use crate::IN_MEMORY_URI;
     use ctor::ctor;
-    use squill_core::{connection::Connection, execute, factory::Factory, query_arrow};
+    use squill_core::{assert_execute_eq, assert_ok, factory::Factory};
     use url::Url;
 
     #[ctor]
@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn test_open_memory() {
-        assert!(Factory::open(IN_MEMORY_URI).is_ok());
+        assert_ok!(Factory::open(IN_MEMORY_URI));
     }
 
     #[test]
@@ -45,7 +45,7 @@ mod tests {
         // create a new database file
         let temp_dir = tempfile::tempdir().unwrap();
         let file_path = temp_dir.path().join("test.db");
-        assert!(Factory::open(&format!("duckdb://{}", Factory::to_uri_path(&file_path))).is_ok());
+        assert_ok!(Factory::open(&format!("duckdb://{}", Factory::to_uri_path(&file_path))));
 
         // opening an invalid file should return an error
         // assert!(Factory::open(path_to_duckdb_uri("./invalid-path/invalid.db".into()).as_str()).is_err());
@@ -55,48 +55,45 @@ mod tests {
     fn test_open_with_config() {
         let mut uri = Url::parse(IN_MEMORY_URI).unwrap();
         uri.query_pairs_mut().append_pair("max_memory", "2GB").append_pair("threads", "4");
-        assert!(Factory::open(uri.as_str()).is_ok());
+        assert_ok!(Factory::open(uri.as_str()));
     }
 
     #[test]
     fn test_close() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let conn = assert_ok!(Factory::open(IN_MEMORY_URI));
         assert!(conn.close().is_ok());
     }
 
     #[test]
     fn test_execute() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        assert_eq!(execute!(conn, "CREATE TABLE employees (id BIGINT, name VARCHAR(100))").unwrap(), 0);
-        assert_eq!(
-            execute!(
-                conn,
-                r#"INSERT INTO employees (id, name)
-                            SELECT id::BIGINT AS id, 'Employees ' || id::BIGINT as name
-                              FROM generate_series(1, 1000) AS series(id)"#
-            )
-            .unwrap(),
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
+        assert_execute_eq!(conn, "CREATE TABLE employees (id BIGINT, name VARCHAR(100))", 0);
+        assert_execute_eq!(
+            conn,
+            r#"INSERT INTO employees (id, name)
+               SELECT id::BIGINT AS id, 'Employees ' || id::BIGINT as name
+                 FROM generate_series(1, 1000) AS series(id)"#,
             1000
         );
     }
 
     #[test]
     fn test_query() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        execute!(conn, "CREATE TABLE employees (id BIGINT, name VARCHAR(100))").unwrap();
-        execute!(
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
+        assert_execute_eq!(conn, "CREATE TABLE employees (id BIGINT, name VARCHAR(100))", 0);
+        assert_execute_eq!(
             conn,
             r#"INSERT INTO employees (id, name) 
                     SELECT id::BIGINT AS id, 'Employees ' || id::BIGINT as name
-                      FROM generate_series(1, 5000) AS series(id)"#
-        )
-        .unwrap();
+                      FROM generate_series(1, 5000) AS series(id)"#,
+            5000
+        );
         let mut num_rows = 0;
-        let mut stmt = conn.prepare("SELECT * FROM employees").unwrap();
-        let query = query_arrow!(stmt).unwrap();
-        for result in query {
-            assert!(result.is_ok());
-            num_rows += result.unwrap().num_rows();
+        let mut stmt = assert_ok!(conn.prepare("SELECT * FROM employees"));
+        let iter = assert_ok!(stmt.query(None));
+        for item in iter {
+            let record_batch = assert_ok!(item);
+            num_rows += record_batch.num_rows();
         }
         assert_eq!(num_rows, 5000);
     }

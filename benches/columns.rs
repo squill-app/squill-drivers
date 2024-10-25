@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use squill_drivers::{Connection, Rows, Statement};
+use squill_drivers::{Connection, Statement};
 
 fn using_get(stmt: &mut Statement) {
-    let rows: Rows = stmt.query(None).unwrap().into();
+    let rows = stmt.query_rows(None).unwrap();
     for row in rows {
         let _: i32 = row.unwrap().get(0);
     }
@@ -10,7 +10,7 @@ fn using_get(stmt: &mut Statement) {
 
 fn criterion_benchmark(c: &mut Criterion) {
     squill_core::mock::register_driver();
-    let conn = Connection::open("mock://").unwrap();
+    let mut conn = Connection::open("mock://").unwrap();
     let mut stmt = conn.prepare("SELECT 1000").unwrap();
 
     let mut group = c.benchmark_group("Column vs Get Column");

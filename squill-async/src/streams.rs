@@ -10,15 +10,15 @@ use std::sync::Arc;
 use std::task::Poll;
 
 /// A non-blocking stream of Arrow's record batches.
-pub struct RecordBatchStream<'conn> {
+pub struct RecordBatchStream<'s> {
     command_sent: bool,
     command_tx: crossbeam_channel::Sender<Command>,
     poll_tx: tokio::sync::mpsc::Sender<driver::Result<Option<arrow_array::RecordBatch>>>,
     poll_rx: tokio::sync::mpsc::Receiver<driver::Result<Option<arrow_array::RecordBatch>>>,
-    phantom: std::marker::PhantomData<&'conn ()>,
+    phantom: std::marker::PhantomData<&'s ()>,
 }
 
-impl<'conn> RecordBatchStream<'conn> {
+impl<'s> RecordBatchStream<'s> {
     pub(crate) fn new(command_tx: crossbeam_channel::Sender<Command>) -> Self {
         let (poll_tx, poll_rx) = tokio::sync::mpsc::channel(1);
         Self { command_sent: false, poll_tx, poll_rx, command_tx, phantom: std::marker::PhantomData }
@@ -39,7 +39,7 @@ impl<'conn> RecordBatchStream<'conn> {
     }
 }
 
-impl<'conn> Stream for RecordBatchStream<'conn> {
+impl<'s> Stream for RecordBatchStream<'s> {
     type Item = Result<arrow_array::RecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Option<Self::Item>> {

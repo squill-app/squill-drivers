@@ -1,22 +1,21 @@
-use crate::statement::{Statement, StatementRef};
-use crate::{RecordBatchStream, RowStream};
+use crate::statement::Statement;
 use arrow_array::RecordBatch;
 use futures::future::{err, BoxFuture};
-use futures::StreamExt;
 use squill_core::driver;
 use squill_core::driver::{DriverConnection, DriverStatement};
+use squill_core::error::Error;
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
 use squill_core::rows::Row;
-use squill_core::{clean_statement, Error, Result};
-use std::collections::HashMap;
+use squill_core::{clean_statement, Result};
+use std::fmt::{Display, Formatter};
 use std::thread;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, event, Level};
 
-/// An handle to an object owned by the connection's thread.
-pub(crate) type Handle = u64;
-
+/// Convert [std::error::Error] into an [Error].
+///
+/// If the error is already an [Error], it is returned as is, otherwise it is wrapped in an [Error::DriverError].
 pub(crate) fn into_error(e: Box<dyn std::error::Error + Send + Sync>) -> Error {
     match e.downcast::<Error>() {
         Ok(error) => *error,
@@ -71,11 +70,11 @@ impl Connection {
         let thread_spawn_result = thread::Builder::new()
             // .name(params.thread_name.clone())
             .spawn(move || match Factory::open(&uri) {
-                Ok(inner_conn) => {
+                Ok(driver_conn) => {
                     if open_tx.send(Ok(Self { command_tx })).is_err() {
                         error!("Channel communication failed.");
-                    } else {
-                        Self::command_loop(inner_conn, command_rx);
+                    } else if let Err(e) = Self::main_command_loop(driver_conn, command_rx) {
+                        error!("Connection did not close cleanly: {}", e);
                     }
                 }
                 Err(e) => {
@@ -106,7 +105,11 @@ impl Connection {
         await_on!(rx)
     }
 
-    pub fn prepare<S: Into<String>>(&self, statement: S) -> BoxFuture<'_, Result<Statement<'_>>> {
+    /// Prepare a statement.
+    ///
+    /// Because of the lifetime of the statement, the connection is no longer usable until the statement is dropped.
+    /// The called must use the [Statement] returned to execute or query the results.
+    pub fn prepare<S: Into<String>>(&mut self, statement: S) -> BoxFuture<'_, Result<Statement<'_>>> {
         let (tx, rx) = oneshot::channel();
         let statement = statement.into();
         event!(Level::DEBUG, message = %{ clean_statement(&statement) });
@@ -115,170 +118,90 @@ impl Connection {
         }
         Box::pin(async move {
             match rx.await {
-                Ok(Ok(handle)) => Ok(Statement::new(handle, self.command_tx.clone())),
+                Ok(Ok(())) => Ok(Statement::new(self.command_tx.clone())),
                 Ok(Err(e)) => Err(Error::DriverError { error: e }),
                 Err(e) => Err(Error::InternalError { error: e.into() }),
             }
         })
     }
 
-    pub fn execute<'conn, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>>(
-        &'conn self,
-        command: S,
-        parameters: Option<Parameters>,
-    ) -> BoxFuture<'r, Result<u64>>
-    where
-        'conn: 's,
-    {
-        match command.into() {
-            StatementRef::Str(s) => {
-                let (tx, rx) = oneshot::channel();
-                let statement = s.to_string();
-                event!(Level::DEBUG, message = %{ clean_statement(&statement) });
-                if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
-                    return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
-                }
-                await_on!(rx)
-            }
-            StatementRef::Statement(statement) => Box::pin(async move { statement.execute(parameters).await }),
-        }
-    }
-
-    pub fn query_arrow<'s, 'conn: 's>(
-        &'conn self,
-        statement: &'s mut Statement<'conn>,
-        parameters: Option<Parameters>,
-    ) -> BoxFuture<'s, Result<RecordBatchStream<'s>>> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self.command_tx.send(Command::Query { handle: statement.handle, parameters, tx }) {
-            return Box::pin(err::<RecordBatchStream<'s>, Error>(Error::DriverError { error: e.into() }));
-        }
-        Box::pin(async move {
-            match rx.await {
-                Ok(Ok(())) => Ok(RecordBatchStream::new(self.command_tx.clone())),
-                Ok(Err(error)) => Err(Error::DriverError { error }),
-                Err(error) => Err(Error::DriverError { error: error.into() }),
-            }
-        })
-    }
-
-    pub fn query_rows<'s, 'conn: 's>(
-        &'conn self,
-        statement: &'s mut Statement<'conn>,
-        parameters: Option<Parameters>,
-    ) -> BoxFuture<'s, Result<RowStream<'s>>> {
-        Box::pin(async move {
-            let stream = self.query_arrow(statement, parameters).await?;
-            Ok(RowStream::from(stream))
-        })
-    }
-
-    pub fn query_row<'conn, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>>(
-        &'conn self,
-        query: S,
-        parameters: Option<Parameters>,
-    ) -> BoxFuture<'r, Result<Option<Row>>>
-    where
-        'conn: 's,
-    {
-        match query.into() {
-            StatementRef::Str(s) => Box::pin(async move {
-                let mut statement = self.prepare(s).await?;
-                self.query_row_inner(&mut statement, parameters).await
-            }),
-            StatementRef::Statement(statement) => {
-                Box::pin(async move { self.query_row_inner(statement, parameters).await })
-            }
-        }
-    }
-
-    /// Query a statement that is expected to return a single row and map it to a value.
+    /// Execute a statement.
     ///
-    /// Returns `Ok(None)` if the query returned no rows.
-    /// If the query returns more than one row, the function will return an the first row and ignore the rest.
-    pub fn query_map_row<'conn, 'r, 's: 'r, S: Into<StatementRef<'r, 's>>, F, T>(
-        &'conn self,
-        query: S,
+    /// This is a convenience method that prepares a statement, binds the parameters, and executes it in one go.
+    /// The response sent back to the caller is the number of rows affected by the statement.
+    ///
+    /// Using this command is more efficient than preparing and then executing the prepared statement because it avoids
+    /// the overhead of preparing prepared statement and then execute it.
+    pub fn execute<S: Into<String>>(
+        &mut self,
+        statement: S,
         parameters: Option<Parameters>,
-        mapping_fn: F,
-    ) -> BoxFuture<'r, Result<Option<T>>>
-    where
-        'conn: 's,
-        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> + std::marker::Send + 'r,
-    {
-        match query.into() {
-            StatementRef::Str(s) => Box::pin(async move {
-                let mut statement = self.prepare(s).await?;
-                self.query_map_row_inner(&mut statement, parameters, mapping_fn).await
-            }),
-            StatementRef::Statement(statement) => {
-                Box::pin(async move { self.query_map_row_inner(statement, parameters, mapping_fn).await })
-            }
+    ) -> BoxFuture<'_, Result<u64>> {
+        let (tx, rx) = oneshot::channel();
+        let statement = statement.into();
+        event!(Level::DEBUG, message = %{ clean_statement(&statement) });
+        if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
+            return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
         }
+        await_on!(rx)
     }
 
-    // This method is used to avoid code duplication in the `query_row` method.
-    async fn query_row_inner<'s, 'conn: 's>(
-        &'conn self,
-        statement: &'s mut Statement<'conn>,
+    /// Execute a query expecting to return at most one row.
+    pub fn query_row<S: Into<String>>(
+        &mut self,
+        statement: S,
         parameters: Option<Parameters>,
-    ) -> Result<Option<Row>> {
-        let mut rows = self.query_rows(statement, parameters).await?;
-        match rows.next().await {
-            Some(Ok(row)) => Ok(Some(row)),
-            Some(Err(e)) => Err(e),
-            None => Ok(None),
-        }
+    ) -> BoxFuture<'_, Result<Option<Row>>> {
+        let statement: String = statement.into();
+        Box::pin(async move {
+            let mut statement = self.prepare(statement).await?;
+            statement.query_row(parameters).await
+        })
     }
 
-    // This method is used to avoid code duplication in the `query_map_row` method.
-    async fn query_map_row_inner<'s, 'conn: 's, F, T>(
-        &'conn self,
-        statement: &'s mut Statement<'conn>,
+    pub fn query_map_row<S: Into<String>, F, T>(
+        &mut self,
+        statement: S,
         parameters: Option<Parameters>,
         mapping_fn: F,
-    ) -> Result<Option<T>>
+    ) -> BoxFuture<'_, Result<Option<T>>>
     where
-        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> + std::marker::Send,
+        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>
+            + std::marker::Send
+            + 'static,
     {
-        let row = self.query_row_inner(statement, parameters).await?;
-        match row {
-            Some(row) => Ok(Some(mapping_fn(row)?)),
-            None => Ok(None),
-        }
+        let statement: String = statement.into();
+        Box::pin(async move {
+            let mut statement = self.prepare(statement).await?;
+            statement.query_map_row(parameters, mapping_fn).await
+        })
     }
 }
 
 pub(crate) enum Command {
-    Close {
-        tx: oneshot::Sender<driver::Result<()>>,
-    },
-    DropStatement {
-        handle: Handle,
-    },
+    Close { tx: oneshot::Sender<driver::Result<()>> },
+    DropStatement { tx: oneshot::Sender<driver::Result<()>> },
     DropCursor,
-    Execute {
-        statement: String,
-        parameters: Option<Parameters>,
-        tx: oneshot::Sender<driver::Result<u64>>,
-    },
-    ExecutePreparedStatement {
-        handle: Handle,
-        parameters: Option<Parameters>,
-        tx: oneshot::Sender<driver::Result<u64>>,
-    },
-    FetchCursor {
-        tx: tokio::sync::mpsc::Sender<driver::Result<Option<RecordBatch>>>,
-    },
-    PrepareStatement {
-        statement: String,
-        tx: oneshot::Sender<driver::Result<Handle>>,
-    },
-    Query {
-        handle: Handle,
-        parameters: Option<Parameters>,
-        tx: oneshot::Sender<driver::Result<()>>,
-    },
+    Execute { statement: String, parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<u64>> },
+    ExecutePreparedStatement { parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<u64>> },
+    FetchCursor { tx: mpsc::Sender<driver::Result<Option<RecordBatch>>> },
+    PrepareStatement { statement: String, tx: oneshot::Sender<driver::Result<()>> },
+    QueryPreparedStatement { parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<()>> },
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::Close { .. } => write!(f, "Close"),
+            Command::DropStatement { .. } => write!(f, "DropStatement"),
+            Command::DropCursor => write!(f, "DropCursor"),
+            Command::Execute { statement, .. } => write!(f, "Execute: {}", statement),
+            Command::ExecutePreparedStatement { .. } => write!(f, "ExecutePreparedStatement"),
+            Command::FetchCursor { .. } => write!(f, "FetchCursor"),
+            Command::PrepareStatement { statement, .. } => write!(f, "PrepareStatement: {}", statement),
+            Command::QueryPreparedStatement { .. } => write!(f, "QueryPreparedStatement"),
+        }
+    }
 }
 
 // A set of macros to simplify the code in the command loop.
@@ -305,10 +228,34 @@ macro_rules! send_response_and_break_on_error {
     };
 }
 
+/// Send a response back to the caller and return an error if the channel is closed.
+///
+/// This is a convenience function to be used instead of `tx.send(value)`. When the channel is closed  `tx.send(value)`
+/// return a [std::result::Result] but the error variant of it if not an error but the value that was not sent. Using
+/// this method makes the code easier to return an error when the channel is closed.
+///
+/// # Example
+/// ```rust,ignore
+/// send_response(value)?;
+/// ```
+fn send_response<T>(tx: oneshot::Sender<driver::Result<T>>, value: driver::Result<T>) -> Result<()> {
+    if tx.send(value).is_err() {
+        let error =
+            Error::InternalError { error: "Channel communication failed while sending command response.".into() };
+        error!("{}", error);
+        return Err(error);
+    }
+    Ok(())
+}
+
 impl Connection {
-    fn command_loop(inner_conn: Box<dyn DriverConnection>, command_rx: crossbeam_channel::Receiver<Command>) {
-        let mut prepared_statements: HashMap<Handle, Box<dyn DriverStatement>> = HashMap::new();
-        let mut next_handle: Handle = 1;
+    ///
+    /// The main command loop for the connection.
+    ///
+    fn main_command_loop(
+        mut driver_conn: Box<dyn DriverConnection>,
+        command_rx: crossbeam_channel::Receiver<Command>,
+    ) -> Result<()> {
         loop {
             let command = command_rx.recv();
             match command {
@@ -316,23 +263,12 @@ impl Connection {
                 // Close the connection.
                 //
                 Ok(Command::Close { tx }) => {
-                    drop(prepared_statements);
-                    let result = inner_conn.close();
+                    let result = driver_conn.close();
                     // We don't care if the receiver is closed, because we are closing the
                     // connection anyway.
-                    send_response_and_break_on_error!(tx, result);
+                    send_response(tx, result)?;
                     // Once the connection is closed, we need to break the loop and exit the thread.
                     break;
-                }
-
-                //
-                // Drop a prepared statement.
-                //
-                // The prepared statement is removed from the `prepared_statements` map. The caller
-                // is not expecting any response.
-                //
-                Ok(Command::DropStatement { handle }) => {
-                    prepared_statements.remove(&handle);
                 }
 
                 //
@@ -345,98 +281,10 @@ impl Connection {
                 // prepared statement because it avoids the overhead of sending back the handle to
                 // the prepared statement and then run a second command to execute it.
                 //
-                Ok(Command::Execute { statement, parameters, tx }) => match inner_conn.prepare(&statement) {
-                    Ok(mut stmt) => send_response_and_break_on_error!(tx, stmt.execute(parameters)),
-                    Err(e) => send_response_and_break_on_error!(tx, Err(e)),
+                Ok(Command::Execute { statement, parameters, tx }) => match driver_conn.prepare(&statement) {
+                    Ok(mut stmt) => send_response(tx, stmt.execute(parameters))?,
+                    Err(e) => send_response(tx, Err(e))?,
                 },
-
-                //
-                // Execute a prepared statement.
-                //
-                Ok(Command::ExecutePreparedStatement { handle, parameters, tx }) => {
-                    if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        send_response_and_break_on_error!(tx, stmt.execute(parameters));
-                    } else {
-                        send_response_and_break_on_error!(tx, Err("Invalid statement handle".into()));
-                    }
-                }
-
-                //
-                // Execute a query.
-                //
-                // The query is executed and the response sent back to the caller once we have the iterator on the
-                // result, then we enter  loop waiting for commands to fetch the rows. This design driven by the
-                // lifetime of the iterator that is tied to the statement which need stay in scope until the iterator
-                // is no longer used.
-                //
-                Ok(Command::Query { handle, parameters, tx }) => {
-                    if let Some(stmt) = prepared_statements.get_mut(&handle) {
-                        match stmt.query(parameters) {
-                            Ok(mut rows) => {
-                                send_response_and_break_on_error!(tx, Ok(()));
-                                loop {
-                                    match command_rx.recv() {
-                                        //
-                                        // Drop the cursor.
-                                        //
-                                        Ok(Command::DropCursor) => {
-                                            // The cursor is dropped, so we need to break the cursor loop.
-                                            break;
-                                        }
-
-                                        //
-                                        // Fetch the next record batch.
-                                        //
-                                        Ok(Command::FetchCursor { tx }) => {
-                                            match rows.next() {
-                                                Some(Ok(batch)) => {
-                                                    blocking_send_response_and_break_on_error!(tx, Ok(Some(batch)));
-                                                }
-                                                Some(Err(e)) => {
-                                                    // An error occurred while fetching the next record batch.
-                                                    // This is a fatal error for this query and we are not expecting to
-                                                    // receive any more fetch commands for it but still we need to wait
-                                                    // for the DropCursor command to break the loop.
-                                                    error!("Error getting next record batch: {:?}", e);
-                                                    blocking_send_response_and_break_on_error!(tx, Err(e));
-                                                }
-                                                None => {
-                                                    // The iterator is exhausted.
-                                                    // We need to break the loop to make the connection available
-                                                    // for other operations.
-                                                    blocking_send_response_and_break_on_error!(tx, Ok(None));
-                                                    break;
-                                                }
-                                            }
-                                        }
-
-                                        //
-                                        // The channel is closed (connection is closed).
-                                        //
-                                        Err(_e) => {
-                                            break;
-                                        }
-
-                                        //
-                                        // Unexpected command.
-                                        //
-                                        _ => {
-                                            // We are not expecting any other command while fetching rows.
-                                            // If this occurs, this is likely because an iterator on a query has not
-                                            // been exhausted and not dropped before trying to re-use the connection for
-                                            // another operation. This is a programming error and the code should be
-                                            // fixed by either exhausting the iterator or dropping it.
-                                            panic!("Unexpected command while fetching rows.");
-                                        }
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                send_response_and_break_on_error!(tx, Err(e));
-                            }
-                        }
-                    }
-                }
 
                 // Prepare a statement.
                 //
@@ -448,11 +296,10 @@ impl Connection {
                 // there is no need to check the result of the send operation and no risk of
                 // leaking statements.
                 //
-                Ok(Command::PrepareStatement { statement, tx }) => match inner_conn.prepare(&statement) {
-                    Ok(stmt) => {
-                        prepared_statements.insert(next_handle, stmt);
-                        send_response_and_break_on_error!(tx, Ok(next_handle));
-                        next_handle += 1;
+                Ok(Command::PrepareStatement { statement, tx }) => match driver_conn.prepare(&statement) {
+                    Ok(mut stmt) => {
+                        send_response(tx, Ok(()))?;
+                        Self::stmt_command_loop(&mut *stmt, command_rx.clone())?;
                     }
                     Err(e) => {
                         send_response_and_break_on_error!(tx, Err(e));
@@ -460,32 +307,151 @@ impl Connection {
                 },
 
                 //
-                // Unexpected FetchCursor command.
+                // Unexpected command.
                 //
-                Ok(Command::FetchCursor { tx }) => {
-                    // This command is not expected at this point. It means the developer is trying to use an iterator
-                    // that is already exhausted.
-                    blocking_send_response_and_break_on_error!(tx, Ok(None));
+                Ok(command) => {
+                    error!("Unexpected command: {}", command);
                     break;
-                }
-
-                //
-                // Unexpected DropCursor command.
-                //
-                Ok(Command::DropCursor) => {
-                    // This happen when the RecordBatchStream is dropped. We should ignore it because it simply means
-                    // that either an error occurred while fetching the next record batch or the iterator is exhausted.
-                    // There is nothing to do here since this command doesn't expect a response.
                 }
 
                 //
                 // The channel is closed (connection is closed).
                 //
                 Err(_e) => {
+                    error!("Channel communication failed.");
                     break;
                 }
             }
         }
+        Ok(())
+    }
+
+    ///
+    /// Processing commands for a statement.
+    ///
+    fn stmt_command_loop(
+        driver_stmt: &mut dyn DriverStatement,
+        command_rx: crossbeam_channel::Receiver<Command>,
+    ) -> Result<()> {
+        loop {
+            let command = command_rx.recv();
+            match command {
+                //
+                // Execute a prepared statement.
+                //
+                Ok(Command::ExecutePreparedStatement { parameters, tx }) => {
+                    let res = driver_stmt.execute(parameters);
+                    send_response::<u64>(tx, res)?;
+                }
+
+                //
+                // Query a prepared statement.
+                //
+                Ok(Command::QueryPreparedStatement { parameters, tx }) => match driver_stmt.query(parameters) {
+                    Ok(mut iter) => {
+                        send_response(tx, Ok(()))?;
+                        Self::cursor_command_loop(&mut iter, command_rx.clone())?;
+                    }
+                    Err(e) => {
+                        send_response(tx, Err(e))?;
+                    }
+                },
+
+                Ok(Command::DropStatement { tx }) => {
+                    //
+                    // Drop a prepared statement (the caller is waiting for the response before it can re-use the connection).
+                    //
+                    send_response(tx, Ok(()))?;
+                    break;
+                }
+
+                Ok(command) => {
+                    //
+                    // Unexpected command.
+                    //
+                    error!("Unexpected command: {}", command);
+                    return Err(Error::InternalError {
+                        error: format!("Unexpected command while processing a statement: {}", command).into(),
+                    });
+                }
+
+                //
+                // The channel is closed (connection is closed).
+                //
+                Err(e) => {
+                    // This is not expected to happen because the connection is closed before the statement is dropped.
+                    return Err(Error::InternalError { error: e.into() });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    ///
+    /// Processing commands for a cursor.
+    ///
+    fn cursor_command_loop(
+        driver_iter: &mut dyn Iterator<
+            Item = std::result::Result<RecordBatch, Box<dyn std::error::Error + Send + Sync>>,
+        >,
+        command_rx: crossbeam_channel::Receiver<Command>,
+    ) -> Result<()> {
+        loop {
+            let command = command_rx.recv();
+            match command {
+                //
+                // Fetch the next record batch.
+                //
+                Ok(Command::FetchCursor { tx }) => {
+                    match driver_iter.next() {
+                        Some(Ok(batch)) => {
+                            blocking_send_response_and_break_on_error!(tx, Ok(Some(batch)));
+                        }
+                        None => {
+                            // The iterator is exhausted.
+                            // We are not expecting to receive any more fetch commands for it but still we need to wait
+                            // for the DropCursor command to break the loop.
+                            blocking_send_response_and_break_on_error!(tx, Ok(None));
+                        }
+                        Some(Err(e)) => {
+                            // An error occurred while fetching the next record batch.
+                            // This is a fatal error for this query and we are not expecting to
+                            // receive any more fetch commands for it but still we need to wait
+                            // for the DropCursor command to break the loop.
+                            error!("Error getting next record batch: {:?}", e);
+                            blocking_send_response_and_break_on_error!(tx, Err(e));
+                        }
+                    }
+                }
+
+                //
+                // Drop the cursor.
+                //
+                Ok(Command::DropCursor) => {
+                    // The cursor is dropped, so we need to break the cursor loop.
+                    break;
+                }
+
+                Ok(command) => {
+                    //
+                    // Unexpected command.
+                    //
+                    error!("Unexpected command: {}", command);
+                    return Err(Error::InternalError {
+                        error: format!("Unexpected command while processing a cursor: {}", command).into(),
+                    });
+                }
+
+                //
+                // The channel is closed (connection is closed).
+                //
+                Err(e) => {
+                    // This is not expected to happen because the connection is closed before the statement is dropped.
+                    return Err(Error::InternalError { error: e.into() });
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -493,7 +459,7 @@ impl Connection {
 mod tests {
     use crate::Connection;
     use futures::StreamExt;
-    use squill_core::params;
+    use squill_core::{assert_ok, assert_some, assert_some_ok, params};
 
     #[tokio::test]
     async fn test_open() {
@@ -503,66 +469,66 @@ mod tests {
 
     #[tokio::test]
     async fn test_prepare() {
-        let conn = Connection::open("mock://").await.unwrap();
-        assert!(conn.prepare("SELECT 1").await.is_ok());
+        let mut conn = Connection::open("mock://").await.unwrap();
+        assert_ok!(conn.prepare("SELECT 1").await);
         assert!(conn.prepare("XINSERT").await.is_err());
     }
 
     #[tokio::test]
     async fn test_execute() {
-        let conn = Connection::open("mock://").await.unwrap();
+        let mut conn = assert_ok!(Connection::open("mock://").await);
 
         // Using string statement
-        assert_eq!(conn.execute("INSERT 1", None).await.unwrap(), 1);
+        assert_ok!(conn.execute("INSERT 1", None).await);
         assert!(conn.execute("SELECT 1", None).await.is_err()); // SELECT is not allowed
         assert!(conn.execute("INSERT 1", params!(1)).await.is_err()); // bind parameters mismatch
 
         // Using prepared statement
-        let mut stmt = conn.prepare("INSERT 1").await.unwrap();
-        assert!(conn.execute(&mut stmt, None).await.is_ok());
-        drop(stmt);
-
-        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        assert!(conn.execute(&mut stmt, None).await.is_err());
-        let mut stmt = conn.prepare("INSERT 1").await.unwrap();
-        assert!(conn.execute(&mut stmt, params!(1)).await.is_err());
+        assert_ok!(assert_ok!(conn.prepare("INSERT 1").await).execute(None).await);
+        assert!(assert_ok!(conn.prepare("SELECT 1").await).execute(None).await.is_err());
+        assert!(assert_ok!(conn.prepare("INSERT 1").await).execute(params!(1)).await.is_err());
     }
 
     #[tokio::test]
     async fn test_query_rows() {
-        let conn = Connection::open("mock://").await.unwrap();
+        let mut conn = assert_ok!(Connection::open("mock://").await);
 
         // Empty result
-        let mut stmt = conn.prepare("SELECT 0").await.unwrap();
-        let mut rows = conn.query_rows(&mut stmt, None).await.unwrap();
+        let mut stmt = assert_ok!(conn.prepare("SELECT 0").await);
+        let mut rows = assert_ok!(stmt.query_rows(None).await);
         assert!(rows.next().await.is_none());
+        drop(rows);
+        drop(stmt);
 
-        // More that one row.
-        let mut stmt = conn.prepare("SELECT 2").await.unwrap();
-        let mut rows = conn.query_rows(&mut stmt, None).await.unwrap();
-        assert_eq!(rows.next().await.unwrap().unwrap().get::<_, i32>(0), 1);
-        assert_eq!(rows.next().await.unwrap().unwrap().get::<_, i32>(0), 2);
+        // Some rows.
+        let mut stmt = assert_ok!(conn.prepare("SELECT 2").await);
+        let mut rows = assert_ok!(stmt.query_rows(None).await);
+        assert_eq!(assert_some_ok!(rows.next().await).get::<_, i32>(0), 1);
+        assert_eq!(assert_some_ok!(rows.next().await).get::<_, i32>(0), 2);
         assert!(rows.next().await.is_none());
+        drop(rows);
+        drop(stmt);
 
         // Error af the first iteration
-        let mut stmt = conn.prepare("SELECT -1").await.unwrap();
-        let mut rows = conn.query_rows(&mut stmt, None).await.unwrap();
+        let mut stmt = assert_ok!(conn.prepare("SELECT -1").await);
+        let mut rows = assert_ok!(stmt.query_rows(None).await);
         assert!(rows.next().await.unwrap().is_err());
     }
 
     #[tokio::test]
     async fn test_query_row() {
-        let conn = Connection::open("mock://").await.unwrap();
+        let mut conn = assert_ok!(Connection::open("mock://").await);
 
-        assert_eq!(conn.query_row("SELECT 2", None).await.unwrap().unwrap().get::<_, i32>(0), 1);
-        assert_eq!(conn.query_row("SELECT 1", None).await.unwrap().unwrap().get::<_, i32>(0), 1);
-        assert!(conn.query_row("SELECT 0", None).await.unwrap().is_none());
+        assert_eq!(assert_some!(assert_ok!(conn.query_row("SELECT 2", None).await)).get::<_, i32>(0), 1);
+        assert_eq!(assert_some!(assert_ok!(conn.query_row("SELECT 1", None).await)).get::<_, i32>(0), 1);
+        assert!(assert_ok!(conn.query_row("SELECT 0", None).await).is_none());
         assert!(conn.query_row("SELECT -1", None).await.is_err());
         assert!(conn.query_row("SELECT X", None).await.is_err());
 
+        // using a prepared statement (that can be called multiple times)
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        assert_eq!(conn.query_row(&mut stmt, None).await.unwrap().unwrap().get::<_, i32>(0), 1);
-        assert_eq!(conn.query_row(&mut stmt, None).await.unwrap().unwrap().get::<_, i32>(0), 1);
+        assert_eq!(assert_some!(assert_ok!(stmt.query_row(None).await)).get::<_, i32>(0), 1);
+        assert_eq!(assert_some!(assert_ok!(stmt.query_row(None).await)).get::<_, i32>(0), 1);
     }
 
     #[tokio::test]
@@ -572,7 +538,7 @@ mod tests {
             username: String,
         }
 
-        let conn = Connection::open("mock://").await.unwrap();
+        let mut conn = assert_ok!(Connection::open("mock://").await);
 
         // some rows
         let user = conn
@@ -616,37 +582,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_arrow() {
-        let conn = Connection::open("mock://").await.unwrap();
+    async fn test_query() {
+        let mut conn = assert_ok!(Connection::open("mock://").await);
 
-        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        assert!(conn.query_arrow(&mut stmt, params!("hello")).await.is_err());
-        let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
+        let mut stmt = assert_ok!(conn.prepare("SELECT 1").await);
+        assert!(stmt.query(params!("hello")).await.is_err());
+        let mut iter = assert_ok!(stmt.query(None).await);
         assert!(iter.next().await.is_some());
         assert!(iter.next().await.is_none());
         drop(iter);
         drop(stmt);
 
-        let mut stmt = conn.prepare("INSERT 1").await.unwrap();
-        assert!(conn.query_arrow(&mut stmt, None).await.is_err());
+        let mut stmt = assert_ok!(conn.prepare("INSERT 1").await);
+        assert!(stmt.query(None).await.is_err());
         drop(stmt);
 
         // Testing not exhausting the iterator, if the iterator was not dropped
-        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
-        assert!(iter.next().await.is_some());
+        let mut stmt = assert_ok!(conn.prepare("SELECT 1").await);
+        let mut iter = assert_ok!(stmt.query(None).await);
+        let _ = assert_some!(iter.next().await);
         drop(iter);
         drop(stmt);
 
-        let mut stmt = conn.prepare("SELECT 1").await.unwrap();
-        let mut iter = conn.query_arrow(&mut stmt, None).await.unwrap();
-        assert!(iter.next().await.is_some());
+        let mut stmt = assert_ok!(conn.prepare("SELECT 1").await);
+        let mut iter = assert_ok!(stmt.query(None).await);
+        let _ = assert_some!(iter.next().await);
         drop(iter);
         drop(stmt);
 
         // Test using Statement::query
         let mut stmt = conn.prepare("SELECT 1").await.unwrap();
         let mut iter = stmt.query(None).await.unwrap();
-        assert!(iter.next().await.is_some());
+        let _ = assert_some!(iter.next().await);
     }
 }

@@ -1,5 +1,6 @@
 use crate::driver::DriverStatement;
 use crate::parameters::Parameters;
+use crate::rows::{Row, Rows};
 use crate::{Error, Result};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
@@ -29,52 +30,67 @@ impl Statement<'_> {
         }
     }
 
+    /// Query a statement and return an iterator of [Row].
+    pub fn query_rows<'s: 'i, 'i>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+    ) -> Result<Box<dyn Iterator<Item = Result<Row>> + 'i>> {
+        match self.query(parameters) {
+            Ok(iterator) => Ok(Box::new(Rows::from(iterator))),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Query a statement that is expected to return a single [Row].
+    ///
+    /// Returns `Ok(None)` if the query returned no rows.
+    /// If the query returns more than one row, the function will return an the first row and ignore the rest.
+    pub fn query_row(&mut self, parameters: Option<Parameters>) -> Result<Option<Row>> {
+        let mut rows = self.query_rows(parameters)?;
+        match rows.next() {
+            Some(Ok(row)) => Ok(Some(row)),
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        }
+    }
+
+    /// Query a statement that is expected to return a single row and map it to a value.
+    ///
+    /// Returns `Ok(None)` if the query returned no rows.
+    /// If the query returns more than one row, the function will return an the first row and ignore the rest.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use squill_core::connection::Connection;
+    /// struct TestUser {
+    ///     id: i32,
+    ///     username: String,
+    /// }
+    ///
+    /// let mut conn = Connection::open("mock://").unwrap();
+    ///
+    /// // some rows
+    /// let user = conn
+    ///     .query_map_row("SELECT 1", None, |row| {
+    ///         Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+    ///     })
+    ///     .unwrap()
+    ///     .unwrap();
+    /// assert_eq!(user.id, 1);
+    /// assert_eq!(user.username, "user1");
+    /// ```
+    pub fn query_map_row<F, T>(&mut self, parameters: Option<Parameters>, mapping_fn: F) -> Result<Option<T>>
+    where
+        F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>,
+    {
+        match self.query_row(parameters)? {
+            Some(row) => Ok(Some(mapping_fn(row)?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn schema(&self) -> SchemaRef {
         self.inner.schema()
     }
 }
-
-/*
-
-/// An enum that can be either a string or a mutable reference to a statement.
-///
-/// This enum is used to allow some functions to accept either a string or a mutable reference to a statement.
-///
-/// # Example
-/// ```rust
-/// # use squill_core::connection::Connection;
-/// # use squill_core::statement::{Statement, StatementRef};
-/// fn my_function<'r, 's: 'r, S: Into<StatementRef<'r, 's>>>(statement: S) -> &'r str {
-///     let statement_ref: StatementRef = statement.into();
-///     match statement_ref {
-///         StatementRef::Str(s) => s,
-///         StatementRef::Statement(_statement) => "statement",
-///     }
-/// }
-///
-/// let conn = Connection::open("mock://").unwrap();
-/// let mut statement = conn.prepare("SELECT 1").unwrap();
-/// assert_eq!(my_function("SELECT 1"), "SELECT 1");
-/// assert_eq!(my_function(&mut statement), "statement");
-/// ```
-pub enum StatementRef<'r, 's> {
-    Str(&'r str),
-    Statement(&'r mut Statement<'s>),
-}
-
-/// Conversion of a [std::str] reference to [StatementRef].
-impl<'r, 's: 'r> From<&'s str> for StatementRef<'r, '_> {
-    fn from(s: &'s str) -> Self {
-        StatementRef::Str(s)
-    }
-}
-
-/// Conversion of a [Statement] mutable reference to [StatementRef].
-/// Create a `StatementRef` from a mutable reference to a statement.
-impl<'r, 's> From<&'r mut Statement<'s>> for StatementRef<'r, 's> {
-    fn from(statement: &'r mut Statement<'s>) -> Self {
-        StatementRef::Statement(statement)
-    }
-}
-
-*/

@@ -133,11 +133,11 @@ impl<T: TimeZone> From<DateTime<T>> for Value {
     }
 }
 
-/// Convert a Uuid into a Value::String or Value::Null if the Uuid is nil.
-///
-/// If you explicitly want to convert an Uuid into a u128, you can use `Uuid::as_u128()` when binding the value.
-/// If you want to store the nil UUID in database, you can bind the value as a `String`.
 impl From<Uuid> for Value {
+    /// Convert a Uuid into a [Value::String] or [Value::Null] if the Uuid is nil.
+    ///
+    /// If you explicitly want to convert an Uuid into a u128, you can use [Uuid::as_u128()] when binding the value.
+    /// If you want to store the nil UUID in database, you can bind the value as a `String`.
     #[inline]
     fn from(value: Uuid) -> Self {
         if value.is_nil() {
@@ -148,11 +148,11 @@ impl From<Uuid> for Value {
     }
 }
 
-/// Convert an Option<T> into a Value::Null if None, otherwise convert the value into a Value.
 impl<T> From<Option<T>> for Value
 where
     T: Into<Value>,
 {
+    /// Convert an `Option<T>`` into a [Value::Null] if `None`, otherwise convert the value into a [Value].
     #[inline]
     fn from(v: Option<T>) -> Value {
         match v {

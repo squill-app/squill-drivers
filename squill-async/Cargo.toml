@@ -18,3 +18,4 @@ tracing = "0.1.40"
 
 [dev-dependencies]
 squill-core = { workspace = true, features = ["mock"]}
+tokio-test = { workspace = true }

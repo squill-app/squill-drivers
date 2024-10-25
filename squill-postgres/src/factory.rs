@@ -1,4 +1,4 @@
-use crate::Postgres;
+use crate::driver::Postgres;
 use squill_core::driver::{DriverConnection, DriverFactory, Result};
 
 pub(crate) struct PostgresFactory {}

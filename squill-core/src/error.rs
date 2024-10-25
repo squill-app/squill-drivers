@@ -21,11 +21,6 @@ pub enum Error {
         error: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// The driver is reporting an error (other than the existing error types).
-    DriverError {
-        error: Box<dyn std::error::Error + Send + Sync>,
-    },
-
     DriverNotFound {
         scheme: String,
     },
@@ -70,6 +65,11 @@ pub enum Error {
 
     UnsupportedDataType {
         data_type: String,
+    },
+
+    /// An error that doesn't fit in any of the other error types.
+    DriverError {
+        error: Box<dyn std::error::Error + Send + Sync>,
     },
 }
 

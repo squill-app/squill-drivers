@@ -60,52 +60,7 @@ mod sqlite_tests {
     use ctor::ctor;
     use squill_core::decode::{self, Decode};
     use squill_core::factory::Factory;
-    use squill_core::parameters::Parameters;
-    use tokio_test::assert_ok;
-
-    macro_rules! assert_execute {
-        ($conn:expr, $query:expr, $expected:expr) => {
-            assert_eq!(assert_ok!(assert_ok!($conn.prepare($query)).execute(None)), $expected);
-        };
-        ($conn:expr, $query:expr, $params:expr, $expected:expr) => {
-            assert_eq!(
-                assert_ok!(assert_ok!($conn.prepare($query)).execute(Some(Parameters::from_slice($params)))),
-                $expected
-            );
-        };
-    }
-
-    macro_rules! assert_query {
-        ($conn:expr, $stmt:expr, $expr:expr, $expected:expr) => {{
-            let mut stmt = assert_ok!($conn.prepare($stmt));
-            let mut iter = assert_ok!(stmt.query(None));
-            let batch = assert_some_ok!(iter.next());
-            assert_eq!($expr(&batch), $expected);
-            drop(iter);
-            drop(stmt);
-        }};
-    }
-
-    macro_rules! assert_query_decode {
-        ($conn:expr, $stmt:expr, $datatype:ty, $expected:expr) => {
-            assert_query!($conn, $stmt, |batch: &RecordBatch| <$datatype>::decode(batch.column(0), 0), $expected);
-        };
-    }
-
-    macro_rules! assert_some {
-        ($option:expr) => {
-            match $option {
-                Some(value) => value,
-                None => panic!("Expected Some, found None"),
-            }
-        };
-    }
-
-    macro_rules! assert_some_ok {
-        ($expr:expr) => {
-            assert_ok!(assert_some!($expr))
-        };
-    }
+    use squill_core::{assert_execute_eq, assert_ok, assert_query_decode_eq, assert_some};
 
     #[ctor]
     fn before_all() {
@@ -140,9 +95,9 @@ mod sqlite_tests {
     #[test]
     fn test_iterator() {
         let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
-        assert_execute!(conn, "CREATE TABLE test (int INTEGER, text TEXT, real REAL, blob BLOB)", 0);
-        assert_execute!(conn, "INSERT INTO test (int, text, real, blob) VALUES (1, 'text', 1.1, x'01')", 1);
-        assert_execute!(conn, "INSERT INTO test (int, text, real, blob) VALUES (2, NULL, NULL, NULL)", 1);
+        assert_execute_eq!(conn, "CREATE TABLE test (int INTEGER, text TEXT, real REAL, blob BLOB)", 0);
+        assert_execute_eq!(conn, "INSERT INTO test (int, text, real, blob) VALUES (1, 'text', 1.1, x'01')", 1);
+        assert_execute_eq!(conn, "INSERT INTO test (int, text, real, blob) VALUES (2, NULL, NULL, NULL)", 1);
         let mut stmt = assert_ok!(conn.prepare("SELECT int, text, real, blob FROM test ORDER BY int"));
         let mut iter = assert_ok!(stmt.query(None));
         let batch = assert_ok!(assert_some!(iter.next()));
@@ -215,7 +170,7 @@ mod sqlite_tests {
     #[test]
     fn test_schema() {
         let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
-        assert_execute!(conn, "CREATE TABLE test_schema (int INTEGER, text TEXT, real REAL, blob BLOB)", 0);
+        assert_execute_eq!(conn, "CREATE TABLE test_schema (int INTEGER, text TEXT, real REAL, blob BLOB)", 0);
         let mut stmt =
             assert_ok!(conn.prepare("SELECT int, text, real, blob, 'hello' AS expr FROM test_schema WHERE 1=2"));
         let mut iter = assert_ok!(stmt.query(None));
@@ -239,17 +194,17 @@ mod sqlite_tests {
     fn test_bind() {
         let blob: Vec<u8> = vec![0x00, 0x01, 0x42];
         let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
-        assert_execute!(conn, "CREATE TABLE test_integer (value INTEGER)", 0);
-        assert_execute!(conn, "CREATE TABLE test_text (value VARCHAR)", 0);
-        assert_execute!(conn, "CREATE TABLE test_real (value REAL)", 0);
-        assert_execute!(conn, "CREATE TABLE test_blob (value BLOB)", 0);
-        assert_execute!(conn, "INSERT INTO test_integer (value) VALUES (?)", &[&42i64], 1);
-        assert_execute!(conn, "INSERT INTO test_text (value) VALUES (?)", &[&"hello"], 1);
-        assert_execute!(conn, "INSERT INTO test_real (value) VALUES (?)", &[&42.2f64], 1);
-        //        assert_execute!(conn, "INSERT INTO test_blob (value) VALUES (?)", &[&blob], 1);
-        assert_query_decode!(conn, "SELECT value FROM test_integer", i64, 42);
-        assert_query_decode!(conn, "SELECT value FROM test_text", String, "hello");
-        assert_query_decode!(conn, "SELECT value FROM test_real", f64, 42.2);
-        //        assert_query_decode!(conn, "SELECT value FROM test_real", Vec<u8>, blob);
+        assert_execute_eq!(conn, "CREATE TABLE test_integer (value INTEGER)", 0);
+        assert_execute_eq!(conn, "CREATE TABLE test_text (value VARCHAR)", 0);
+        assert_execute_eq!(conn, "CREATE TABLE test_real (value REAL)", 0);
+        assert_execute_eq!(conn, "CREATE TABLE test_blob (value BLOB)", 0);
+        assert_execute_eq!(conn, "INSERT INTO test_integer (value) VALUES (?)", &[&42i64], 1);
+        assert_execute_eq!(conn, "INSERT INTO test_text (value) VALUES (?)", &[&"hello"], 1);
+        assert_execute_eq!(conn, "INSERT INTO test_real (value) VALUES (?)", &[&42.2f64], 1);
+        //        assert_execute_eq!(conn, "INSERT INTO test_blob (value) VALUES (?)", &[&blob], 1);
+        assert_query_decode_eq!(conn, "SELECT value FROM test_integer", i64, 42);
+        assert_query_decode_eq!(conn, "SELECT value FROM test_text", String, "hello");
+        assert_query_decode_eq!(conn, "SELECT value FROM test_real", f64, 42.2);
+        //        assert_query_decode_eq!(conn, "SELECT value FROM test_real", Vec<u8>, blob);
     }
 }

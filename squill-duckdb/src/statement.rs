@@ -87,22 +87,21 @@ mod tests {
     use arrow_array::Array;
     use chrono::NaiveTime;
     use rust_decimal::Decimal;
-    use squill_core::connection::Connection;
     use squill_core::decode::Decode;
+    use squill_core::factory::Factory;
     use squill_core::values::{TimeUnit, Value};
-    use squill_core::{execute, query_arrow};
+    use squill_core::{assert_execute_eq, assert_some_ok, params};
     use tokio_test::assert_ok;
     use uuid::Uuid;
 
     #[test]
     fn test_binding_primitive_types() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
 
         // Note: u128 is intentionally omitted because DuckDB does not support UInt128 yet for some reason.
         // https://github.com/duckdb/duckdb-rs/issues/273
-        let mut stmt = conn
-            .prepare(
-                r#"SELECT 
+        let mut stmt = assert_ok!(conn.prepare(
+            r#"SELECT 
               /*  0 */ ?::BOOLEAN,
               /*  1 */ ?::TINYINT,
               /*  2 */ ?::SMALLINT,
@@ -119,11 +118,9 @@ mod tests {
               /* 13 */ ?::VARCHAR(100),
               /* 14 */ ?::BLOB
               "#,
-            )
-            .unwrap();
+        ));
 
-        let batch = query_arrow!(
-            stmt,
+        let parameters = params!(
             /*  0 */ true,
             /*  1 */ i8::MAX,
             /*  2 */ i16::MAX,
@@ -138,12 +135,10 @@ mod tests {
             /* 11 */ f32::MAX,
             /* 12 */ f64::MAX,
             /* 13 */ "Hello, World!",
-            /* 14 */ vec![0xde, 0xad, 0xbe, 0xef]
-        )
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+            /* 14 */ vec![0xdeu8, 0xad, 0xbe, 0xef]
+        );
+        let mut iter = assert_ok!(stmt.query(parameters));
+        let batch = assert_some_ok!(iter.next());
 
         // // u128 is not tested because DuckDB does not support UHUGEINT yet for some reason.
         assert!(bool::decode(batch.column(0), 0)); // 0 - BOOLEAN
@@ -167,11 +162,10 @@ mod tests {
     fn test_binding_datetime_types() {
         use chrono::{DateTime, Utc};
 
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        let _ = execute!(conn, "SET TimeZone='UTC'");
-        let mut stmt = conn
-            .prepare(
-                r#"SELECT 
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
+        assert_execute_eq!(conn, "SET TimeZone='UTC'", 0);
+        let mut stmt = assert_ok!(conn.prepare(
+            r#"SELECT 
           /* 0 */ '2014/11/01'::DATE,
           /* 1 */ ?::DATE,
           /* 2 */ '2024-07-03 08:56:05.716022-07'::TIMESTAMP WITH TIME ZONE,
@@ -183,10 +177,9 @@ mod tests {
           /* 8 */ '1 year 5 days 12 mins 13 seconds 8 microseconds'::INTERVAL,
           /* 9 */ ?::INTERVAL
           "#,
-            )
-            .unwrap();
-        let batch = query_arrow!(
-            stmt,
+        ));
+
+        let parameters = params!(
             /* 0 - binding for DATE tested on #1 */
             /* 1 */ Value::Date32(16375),
             /* 2 - binding for TIMESTAMP WITH TIME ZONE tested on #3 */
@@ -201,14 +194,10 @@ mod tests {
             /* 8 - binding on INTERVAL tested on #9 */
             /* 9 */
             Value::Interval { months: 7, days: 3, nanos: 72_101_202_000 }
-        )
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+        );
 
-        let _schema = format!("{:?}", batch.schema().field(8));
-        let _debug = format!("{:?}", batch.column(8));
+        let mut iter = assert_ok!(stmt.query(parameters));
+        let batch = assert_some_ok!(iter.next());
 
         // 0 - DATE (no binding)
         assert_eq!(
@@ -274,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_binding_other_types() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
         let mut stmt = conn
             .prepare(
                 r#"SELECT 
@@ -286,8 +275,8 @@ mod tests {
               "#,
             )
             .unwrap();
-        let batch = query_arrow!(
-            stmt,
+
+        let parameters = params!(
             /* 0 BIT (no binding) */
             /* 1 DECIMAL (no binding) */
             /* 2 */
@@ -295,14 +284,10 @@ mod tests {
             /* 3 UUID (no binding) */
             /* 4 */
             uuid::Uuid::parse_str("0e089c07-8654-4aab-9c25-4f3c44590251").unwrap()
-        )
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+        );
 
-        let _schema = format!("{:?}", batch.schema().field(1));
-        let _debug = format!("{:?}", batch.column(1));
+        let mut iter = assert_ok!(stmt.query(parameters));
+        let batch = assert_some_ok!(iter.next());
 
         // 0 - BIT
         // Not tested because because of a bug in DuckDB.
@@ -327,26 +312,21 @@ mod tests {
 
     #[test]
     fn test_binding_null() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        let mut stmt = conn
-            .prepare(
-                r#"SELECT 
-      /* 0 */ NULL,
-      /* 1 */ ?,
-      /* 2 */ ?
-      "#,
-            )
-            .unwrap();
-        let batch = query_arrow!(
-            stmt,
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
+        let mut stmt = assert_ok!(conn.prepare(
+            r#"SELECT 
+                /* 0 */ NULL,
+                /* 1 */ ?,
+                /* 2 */ ?
+            "#,
+        ));
+        let parameters = params!(
             /* 0 NULL (no binding) */
             /* 1 */ Value::Null,
             /* 2 */ None::<i32>
-        )
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap();
+        );
+        let mut iter = assert_ok!(stmt.query(parameters));
+        let batch = assert_some_ok!(iter.next());
 
         assert!(batch.column(0).is_null(0));
         assert!(batch.column(1).is_null(0));
@@ -354,37 +334,20 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_multiple_statements() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
-        let mut stmt_one = conn.prepare("SELECT 1").unwrap();
-        let mut stmt_two = conn.prepare("SELECT 2").unwrap();
-
-        let mut rows = query_arrow!(stmt_one).unwrap();
-        assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), 1);
-        drop(rows);
-
-        let mut rows = query_arrow!(stmt_two).unwrap();
-        assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), 2);
-
-        let mut rows = query_arrow!(stmt_one).unwrap();
-        assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), 1);
-    }
-
-    #[test]
     fn test_rebinding_statement() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
         let mut stmt = conn.prepare("SELECT ?").unwrap();
         for i in 1..=2 {
-            let mut rows = query_arrow!(stmt, i).unwrap();
+            let mut rows = assert_ok!(stmt.query(params!(i)));
             assert_eq!(i32::decode(rows.next().unwrap().unwrap().column(0), 0), i);
         }
     }
 
     #[test]
     fn test_schema() {
-        let conn = Connection::open(IN_MEMORY_URI).unwrap();
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
         let mut stmt = assert_ok!(conn.prepare("SELECT 1 AS col_one WHERE 1=2"));
-        let mut it = assert_ok!(query_arrow!(stmt));
+        let mut it = assert_ok!(stmt.query(None));
         assert!(it.next().is_none());
         drop(it); // needed to call schema
         let schema = stmt.schema();

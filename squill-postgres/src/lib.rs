@@ -6,12 +6,7 @@ pub const DRIVER_NAME: &str = "postgres";
 mod driver;
 mod errors;
 mod factory;
-mod statement;
 mod values;
-
-pub(crate) struct Postgres {
-    pub(crate) client: postgres::Client,
-}
 
 pub fn register_driver() {
     static INIT: std::sync::Once = std::sync::Once::new();

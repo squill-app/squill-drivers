@@ -1,11 +1,11 @@
 use comfy_table::Table;
-use squill_core::query_arrow;
+use squill_core::query;
 use squill_drivers::{Connection, Result, Rows};
 
 fn main() -> Result<()> {
     squill_drivers::register_drivers();
 
-    let conn = Connection::open("duckdb:///:memory:")?;
+    let mut conn = Connection::open("duckdb:///:memory:")?;
 
     // Preparing a query statement that takes 1 parameter
     let mut stmt = conn.prepare("SELECT id, 'Employee #' || id as name FROM generate_series(1, ?) AS series(id)")?;
@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     //   id: 1, name: Employee #1
     //   id: 2, name: Employee #2
     //
-    let mut rows: Rows = query_arrow!(stmt, 2)?.into();
+    let mut rows: Rows = query!(stmt, 2)?.into();
     while let Some(Ok(row)) = rows.next() {
         let employee: (i64, String) = (row.get("id"), row.get("name"));
         println!("id: {}, name: {}", employee.0, employee.1);
@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     //   ──────────────────
     //   3    Employee #3
     //   ──────────────────
-    let mut rows: Rows = query_arrow!(stmt, 3)?.into();
+    let mut rows: Rows = query!(stmt, 3)?.into();
     let mut table = Table::new();
     table.load_preset(comfy_table::presets::UTF8_HORIZONTAL_ONLY);
     let mut next_row = rows.next();
