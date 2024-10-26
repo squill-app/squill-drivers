@@ -16,10 +16,10 @@ pub const IN_MEMORY_SPECIAL_FILENAME: &str = ":memory:";
 /// URI for an in-memory databases.
 ///
 /// # Example
-/// ```rust,ignore
-/// # use squill_core::connection::Connection;
+/// ```rust
+/// use squill_core::factory::Factory;
 /// # use squill_sqlite::IN_MEMORY_URI;
-/// let conn = Connection::open(IN_MEMORY_URI);
+/// let conn = Factory::open(IN_MEMORY_URI);
 /// ```
 pub const IN_MEMORY_URI: &str = "sqlite::memory:";
 

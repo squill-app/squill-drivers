@@ -7,7 +7,7 @@ use squill_core::error::Error;
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
 use squill_core::rows::Row;
-use squill_core::{clean_statement, Result};
+use squill_core::{debug_clean_statement, Result};
 use std::fmt::{Display, Formatter};
 use std::thread;
 use tokio::sync::{mpsc, oneshot};
@@ -112,7 +112,7 @@ impl Connection {
     pub fn prepare<S: Into<String>>(&mut self, statement: S) -> BoxFuture<'_, Result<Statement<'_>>> {
         let (tx, rx) = oneshot::channel();
         let statement = statement.into();
-        event!(Level::DEBUG, message = %{ clean_statement(&statement) });
+        event!(Level::DEBUG, message = %{ debug_clean_statement(&statement) });
         if let Err(e) = self.command_tx.send(Command::PrepareStatement { statement, tx }) {
             return Box::pin(err::<Statement<'_>, Error>(Error::DriverError { error: e.into() }));
         }
@@ -139,7 +139,7 @@ impl Connection {
     ) -> BoxFuture<'_, Result<u64>> {
         let (tx, rx) = oneshot::channel();
         let statement = statement.into();
-        event!(Level::DEBUG, message = %{ clean_statement(&statement) });
+        event!(Level::DEBUG, message = %{ debug_clean_statement(&statement) });
         if let Err(e) = self.command_tx.send(Command::Execute { statement, parameters, tx }) {
             return Box::pin(err::<u64, Error>(Error::DriverError { error: e.into() }));
         }

@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 pub mod arrow;
-pub mod connection;
 pub mod decode;
 pub mod driver;
 pub mod error;
@@ -9,7 +8,6 @@ pub mod factory;
 pub mod macros;
 pub mod parameters;
 pub mod rows;
-pub mod statement;
 pub mod values;
 
 /// The mock module is only available when running test or when the `mock` feature is enabled.
@@ -29,7 +27,7 @@ pub type DriverResult<T> = std::result::Result<T, Error>;
 
 /// Return a clean version of the input string for logging purposes.
 /// The returned statement is cleaned by removing all non significant characters.
-pub fn clean_statement(input: &str) -> String {
+pub fn debug_clean_statement(input: &str) -> String {
     let mut result = String::new();
     let mut chars = input.chars().peekable();
 

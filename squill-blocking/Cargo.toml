@@ -1,0 +1,19 @@
+[package]
+name = "squill-blocking"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+squill-core = { workspace = true }
+arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+squill-core = { workspace = true, features = ["mock"]}
+tokio-test = { workspace = true }

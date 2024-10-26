@@ -11,27 +11,32 @@
 //! * [`squill-core`][squill_core] - the core traits and types
 //! * [`squill-duckdb`][squill_duckdb] - the [DuckDB](https://duckdb.org) driver
 //! * [`squill-sqlite`][squill_sqlite] - the [SQLite](https://www.sqlite.org) driver
-//! * [`squill-async`][squill_async] - asynchronous adapter for squill drivers
+//! * [`squill-async`][squill_async] - asynchronous connection adapter for squill drivers
+//! * [`squill-blocking`][squill_blocking] - blocking connection adapter for squill drivers
 
-pub use squill_core::connection::Connection;
 pub use squill_core::decode::Decode;
 pub use squill_core::error::Error;
 pub use squill_core::factory::Factory;
 pub use squill_core::parameters::Parameters;
 pub use squill_core::rows::Row;
 pub use squill_core::rows::Rows;
-pub use squill_core::statement::Statement;
 pub use squill_core::Result;
 
 // Re-export the macros.
 pub use squill_core::{execute, params};
 
-#[cfg(feature = "async")]
-pub mod futures {
+#[cfg(feature = "async-conn")]
+pub mod async_conn {
     pub use squill_async::Connection;
     pub use squill_async::RecordBatchStream;
     pub use squill_async::RowStream;
     pub use squill_async::Statement;
+}
+
+#[cfg(feature = "blocking-conn")]
+pub mod blocking_conn {
+    pub use squill_blocking::Connection;
+    pub use squill_blocking::Statement;
 }
 
 #[cfg(feature = "sqlite")]

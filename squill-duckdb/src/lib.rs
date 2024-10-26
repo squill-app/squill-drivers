@@ -16,8 +16,8 @@ pub const IN_MEMORY_URI_PATH: &str = "/:memory:";
 ///
 /// # Example
 /// ```rust
-/// # use squill_core::connection::Connection;
-/// let conn = Connection::open("duckdb:///:in-memory:?threads=4&max_memory=2GB");
+/// # use squill_core::factory::Factory;
+/// let mut conn = Factory::open("duckdb:///:in-memory:?threads=4&max_memory=2GB");
 /// ```
 pub const IN_MEMORY_URI: &str = "duckdb:///:memory:";
 

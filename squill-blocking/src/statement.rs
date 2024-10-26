@@ -1,9 +1,9 @@
-use crate::driver::DriverStatement;
-use crate::parameters::Parameters;
-use crate::rows::{Row, Rows};
-use crate::{Error, Result};
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
+use squill_core::driver::DriverStatement;
+use squill_core::parameters::Parameters;
+use squill_core::rows::{Row, Rows};
+use squill_core::{Error, Result};
 
 /// A prepared statement.
 ///
@@ -62,7 +62,7 @@ impl Statement<'_> {
     /// # Example
     ///
     /// ```rust
-    /// # use squill_core::connection::Connection;
+    /// use squill_blocking::Connection;
     /// struct TestUser {
     ///     id: i32,
     ///     username: String,

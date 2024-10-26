@@ -8,14 +8,14 @@ use arrow_array::RecordBatch;
 ///
 /// # Example
 /// ```rust
-/// use squill_core::connection::Connection;
+/// use squill_core::factory::Factory;
 /// use squill_core::params;
 ///
-/// // This should return a mock connection
-/// let mut conn = Connection::open("mock://").unwrap();
-///
 /// // Opening a connection with the URI "mock://?error" should return an error
-/// assert!(Connection::open("mock://?error").is_err());
+/// assert!(Factory::open("mock://?error").is_err());
+
+/// // This should return a mock connection
+/// let mut conn = Factory::open("mock://").unwrap();
 ///
 /// // Calling `prepare` should return a mock statement unless the statement is "XINSERT"
 /// assert!(conn.prepare("XINSERT").is_err());

@@ -1,14 +1,14 @@
-use crate::driver::DriverConnection;
-use crate::factory::Factory;
-use crate::parameters::Parameters;
-use crate::rows::Row;
 use crate::statement::Statement;
-use crate::{Error, Result};
+use squill_core::driver::DriverConnection;
+use squill_core::factory::Factory;
+use squill_core::parameters::Parameters;
+use squill_core::rows::Row;
+use squill_core::{Error, Result};
 
 /// A connection to a data source.
 ///
 /// ```rust,ignore
-/// use squill_core::connection::Connection;
+/// use squill_blocking::Connection;
 ///
 /// let nut conn = Connection::open("mock://").unwrap();
 ///
@@ -84,7 +84,7 @@ impl Connection {
     /// Because a {{Statement}} borrows the connection, all statements must be dropped before calling `close()`.
     ///
     /// ```rust
-    /// use squill_core::connection::Connection;
+    /// use squill_blocking::Connection;
     ///
     /// let mut conn = Connection::open("mock://").unwrap();
     /// let stmt = conn.prepare("SELECT 1").unwrap();
@@ -102,7 +102,7 @@ impl Connection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::params;
+    use squill_core::params;
 
     #[test]
     fn test_prepare() {
