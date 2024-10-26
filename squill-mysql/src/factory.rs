@@ -1,6 +1,7 @@
+use crate::driver::MySql;
 use crate::errors::driver_error;
-use crate::{MySql, DRIVER_NAME};
-use squill_core::driver::{DriverConnection, DriverFactory, Result};
+use crate::DRIVER_NAME;
+use squill_core::driver::{DriverConnection, DriverFactory, DriverOptionsRef, Result};
 use squill_core::Error;
 
 pub(crate) struct MySqlFactory {}
@@ -10,13 +11,12 @@ impl DriverFactory for MySqlFactory {
         &[DRIVER_NAME]
     }
 
-    /// FIXME: SHOULD USE THE URI PARSING ERROR REASON (_url_error)
     /// Open a connection to a MySQL database.
-    fn open(&self, uri: &str) -> Result<Box<dyn DriverConnection>> {
+    fn open(&self, uri: &str, options: DriverOptionsRef) -> Result<Box<dyn DriverConnection>> {
         let opts = mysql::Opts::from_url(uri)
             .map_err(|url_error| Error::InvalidUri { uri: uri.to_string(), reason: url_error.to_string() })?;
         let conn: mysql::Conn = mysql::Conn::new(opts).map_err(driver_error)?;
-        Ok(Box::new(MySql { conn: std::cell::RefCell::new(conn) }))
+        Ok(Box::new(MySql { conn, options }))
     }
 }
 

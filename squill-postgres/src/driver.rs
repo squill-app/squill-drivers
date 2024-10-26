@@ -5,13 +5,14 @@ use arrow_array::builder::ArrayBuilder;
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use postgres::fallible_iterator::FallibleIterator;
-use squill_core::driver::{DriverConnection, DriverStatement, Result};
+use squill_core::driver::{DriverConnection, DriverOptionsRef, DriverStatement, Result};
 use squill_core::parameters::Parameters;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(crate) struct Postgres {
     pub(crate) client: postgres::Client,
+    pub(crate) options: DriverOptionsRef,
 }
 
 impl DriverConnection for Postgres {
@@ -27,7 +28,7 @@ impl DriverConnection for Postgres {
         Ok(Box::new(PostgresStatement {
             inner: self.client.prepare(statement).map_err(into_driver_error)?,
             client: &mut self.client,
-            phantom: std::marker::PhantomData,
+            options: self.options.clone(),
         }))
     }
 }
@@ -35,7 +36,7 @@ impl DriverConnection for Postgres {
 pub(crate) struct PostgresStatement<'c> {
     pub(crate) client: &'c mut postgres::Client,
     pub(crate) inner: postgres::Statement,
-    pub(crate) phantom: std::marker::PhantomData<&'c ()>,
+    pub(crate) options: DriverOptionsRef,
 }
 
 pub trait ArrowArrayAppender<T> {
@@ -105,7 +106,7 @@ impl DriverStatement for PostgresStatement<'_> {
         let params_iter = ParametersIterator::new(&parameters);
         let schema = self.schema();
         let res_iter = self.client.query_raw(&self.inner, params_iter).map_err(into_driver_error)?;
-        let iter = PostgresRows { schema, inner: res_iter, max_batch_rows: 1000 };
+        let iter = PostgresRows { schema, inner: res_iter, options: self.options.clone() };
         Ok(Box::new(iter))
     }
 
@@ -117,7 +118,7 @@ impl DriverStatement for PostgresStatement<'_> {
 
 struct PostgresRows<'s> {
     schema: SchemaRef,
-    max_batch_rows: usize,
+    options: DriverOptionsRef,
     inner: postgres::RowIter<'s>,
 }
 
@@ -180,6 +181,7 @@ impl Iterator for PostgresRows<'_> {
             .map(|field| arrow_array::builder::make_builder(field.data_type(), 0))
             .collect::<Vec<_>>();
 
+        let max_batch_rows = self.options.max_batch_rows;
         let mut row_num = 0;
         let inner = &mut self.inner;
         loop {
@@ -188,7 +190,7 @@ impl Iterator for PostgresRows<'_> {
                 Ok(Some(row)) => match Self::append_row(&mut columns, row) {
                     Ok(_) => {
                         row_num += 1;
-                        if row_num >= self.max_batch_rows {
+                        if row_num >= max_batch_rows {
                             break;
                         }
                     }

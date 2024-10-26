@@ -45,7 +45,7 @@ use arrow_array::RecordBatch;
 impl MockDriverFactory {
     pub fn register_with_default(schemes: &'static [&'static str]) {
         let mut mock_factory = MockDriverFactory::default();
-        mock_factory.expect_open().returning(|uri| match uri.contains("?error") {
+        mock_factory.expect_open().returning(|uri, _options| match uri.contains("?error") {
             false => Ok(Box::new(MockDriverConnection::with_default())),
             true => Err("Invalid URI".into()),
         });

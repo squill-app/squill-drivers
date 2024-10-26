@@ -1,7 +1,7 @@
 use crate::DuckDB;
 use crate::IN_MEMORY_URI_PATH;
 use squill_core::driver::Result;
-use squill_core::driver::{DriverConnection, DriverFactory};
+use squill_core::driver::{DriverConnection, DriverFactory, DriverOptionsRef};
 use squill_core::Error;
 
 pub(crate) struct DuckDBFactory {}
@@ -11,7 +11,10 @@ impl DriverFactory for DuckDBFactory {
         &["duckdb"]
     }
 
-    fn open(&self, uri: &str) -> Result<Box<dyn DriverConnection>> {
+    /// Open a connection to a DuckDB database.
+    ///
+    /// The `options` parameter is not used because the DuckDB build the record batch by itself.
+    fn open(&self, uri: &str, _options: DriverOptionsRef) -> Result<Box<dyn DriverConnection>> {
         let parsed_uri =
             url::Url::parse(uri).map_err(|e| Error::InvalidUri { uri: uri.to_string(), reason: e.to_string() })?;
         let mut path = parsed_uri.path();

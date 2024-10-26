@@ -1,6 +1,5 @@
 use crate::errors::driver_error;
 use crate::value::Adapter;
-use crate::SqliteOptionsRef;
 use arrow_array::builder::ArrayBuilder;
 use arrow_array::builder::BinaryBuilder;
 use arrow_array::builder::Float64Builder;
@@ -12,6 +11,7 @@ use arrow_schema::DataType;
 use arrow_schema::Field;
 use arrow_schema::Schema;
 use arrow_schema::SchemaRef;
+use squill_core::driver::DriverOptionsRef;
 use squill_core::driver::DriverStatement;
 use squill_core::driver::Result;
 use squill_core::parameters::Parameters;
@@ -20,9 +20,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 pub(crate) struct SqliteStatement<'c> {
-    // pub(crate) schema: Option<SchemaRef>,
     pub(crate) inner: rusqlite::Statement<'c>,
-    pub(crate) options: SqliteOptionsRef,
+    pub(crate) options: DriverOptionsRef,
 }
 
 impl SqliteStatement<'_> {
@@ -94,7 +93,7 @@ impl DriverStatement for SqliteStatement<'_> {
 
 struct SqliteRows<'s> {
     inner: rusqlite::Rows<'s>,
-    options: SqliteOptionsRef,
+    options: DriverOptionsRef,
     schema: RefCell<SchemaRef>,
 }
 
@@ -209,6 +208,7 @@ impl<'c> Iterator for SqliteRows<'c> {
             })
             .collect();
 
+        let max_batch_rows = self.options.max_batch_rows;
         let rows = &mut self.inner;
         let mut row_num = 0;
         loop {
@@ -217,7 +217,7 @@ impl<'c> Iterator for SqliteRows<'c> {
                 Ok(Some(row)) => match Self::append_value(&self.schema, &mut columns, row) {
                     Ok(_) => {
                         row_num += 1;
-                        if row_num >= self.options.max_batch_rows {
+                        if row_num >= max_batch_rows {
                             break;
                         }
                     }

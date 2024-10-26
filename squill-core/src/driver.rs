@@ -1,6 +1,7 @@
 use crate::parameters::Parameters;
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
+use std::sync::Arc;
 
 #[cfg(any(test, feature = "mock"))]
 use mockall::automock;
@@ -84,8 +85,25 @@ pub trait DriverStatement {
 pub trait DriverFactory: Sync + Send {
     /// Get the schemes associated with the driver.
     fn schemes(&self) -> &'static [&'static str];
-    fn open(&self, uri: &str) -> Result<Box<dyn DriverConnection>>;
+    fn open(&self, uri: &str, options: DriverOptionsRef) -> Result<Box<dyn DriverConnection>>;
 }
+
+/// The options that can be used by any driver.
+pub struct DriverOptions {
+    /// The maximum number rows that can be written in a single batch (default is 10,000 rows).
+    pub max_batch_rows: usize,
+
+    /// The maximum number of bytes that can be written in a single batch (default is 1MB).
+    pub max_batch_bytes: usize,
+}
+
+impl Default for DriverOptions {
+    fn default() -> Self {
+        Self { max_batch_rows: 1_0000, max_batch_bytes: 1_000_000 }
+    }
+}
+
+pub type DriverOptionsRef = Arc<DriverOptions>;
 
 #[cfg(any(test, feature = "mock"))]
 #[ctor::ctor]

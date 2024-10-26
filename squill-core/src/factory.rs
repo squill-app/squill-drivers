@@ -1,5 +1,6 @@
 use crate::driver::DriverConnection;
 use crate::driver::DriverFactory;
+use crate::driver::DriverOptionsRef;
 use crate::error::Error;
 use crate::Result;
 use lazy_static::lazy_static;
@@ -27,14 +28,25 @@ impl Factory {
         factories.retain(|f| !f.schemes().contains(&scheme));
     }
 
+    /// Open a connection to a database using the given URI.
+    ///
+    /// Using this method will use the default options for opening the connection.
+    /// See [`open_with_options`](Self::open_with_options) for more details.
     pub fn open(uri: &str) -> Result<Box<dyn DriverConnection>> {
+        Self::open_with_options(uri, Arc::new(Default::default()))
+    }
+
+    /// Open a connection to a database using the given URI and options.
+    ///
+    /// The URI must start with a scheme followed by a colon and the rest of the URI is driver-specific.
+    pub fn open_with_options(uri: &str, options: DriverOptionsRef) -> Result<Box<dyn DriverConnection>> {
         // Extract the scheme from the URI.
         if let Some(captures) = regex::Regex::new("^([a-zA-Z][a-zA-Z0-9+.-]*):")?.captures(uri) {
             // It is safe to unwrap because the regex has matched and the capture group must be present otherwise the
             // regex would not match.
             let scheme = captures.get(1).unwrap().as_str();
             match DRIVER_FACTORIES.find(scheme) {
-                Some(driver) => return driver.open(uri).map_err(Error::from),
+                Some(driver) => return driver.open(uri, options).map_err(Error::from),
                 None => return Err(Error::DriverNotFound { scheme: scheme.to_string() }),
             }
         }
