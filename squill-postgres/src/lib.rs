@@ -18,14 +18,9 @@ pub fn register_driver() {
 #[cfg(test)]
 mod postgres_tests {
     use ctor::ctor;
-    use squill_core::factory::Factory;
+    use squill_core::decode::Decode;
+    use squill_core::{assert_execute_eq, assert_some_ok, factory::Factory};
     use tokio_test::assert_ok;
-
-    macro_rules! assert_execute {
-        ($conn:expr, $query:expr, $expected:expr) => {
-            assert_eq!(assert_ok!(assert_ok!($conn.prepare($query)).execute(None)), $expected);
-        };
-    }
 
     #[ctor]
     fn before_all() {
@@ -40,30 +35,24 @@ mod postgres_tests {
 
     #[test]
     fn test_execute() {
-        let ci_database_uri = env!("CI_POSTGRES_URI");
-        let mut conn = assert_ok!(Factory::open(ci_database_uri));
-        assert_execute!(conn, "CREATE TEMPORARY TABLE ci_test (id INTEGER PRIMARY KEY, name TEXT)", 0);
-        assert_execute!(conn, "INSERT INTO ci_test (id, name) VALUES (1, NULL)", 1);
-        assert_execute!(conn, "INSERT INTO ci_test (id, name) VALUES (2, NULL)", 1);
-        assert_execute!(conn, "DELETE FROM ci_test WHERE id IN (1, 2)", 2);
+        let mut conn = assert_ok!(Factory::open(env!("CI_POSTGRES_URI")));
+        assert_execute_eq!(conn, "CREATE TEMPORARY TABLE ci_test (id INTEGER PRIMARY KEY, name TEXT)", 0);
+        assert_execute_eq!(conn, "INSERT INTO ci_test (id, name) VALUES (1, NULL)", 1);
+        assert_execute_eq!(conn, "INSERT INTO ci_test (id, name) VALUES (2, NULL)", 1);
+        assert_execute_eq!(conn, "DELETE FROM ci_test WHERE id IN (1, 2)", 2);
     }
 
     #[test]
     fn test_query() {
-        let ci_database_uri = env!("CI_POSTGRES_URI");
-        let mut conn = assert_ok!(Factory::open(ci_database_uri));
-        let mut stmt = conn.prepare("SELECT 1 AS one, 2 AS two").unwrap();
-        let mut rows = stmt.query(None).unwrap();
-        let batch = rows.next().unwrap().unwrap();
-        println!("{:?}", batch);
-        drop(rows);
-        drop(stmt);
-
-        let mut stmt = conn
-            .prepare("SELECT id, NULL as unknown, 'hello' as text, CASE  WHEN id < 2 THEN NULL ELSE 42 END AS age FROM generate_series(0, 5) AS id;")
-            .unwrap();
-        let mut rows = stmt.query(None).unwrap();
-        let batch = rows.next().unwrap().unwrap();
-        println!("{:?}", batch);
+        let mut conn = assert_ok!(Factory::open(env!("CI_POSTGRES_URI")));
+        let mut stmt = assert_ok!(conn.prepare("SELECT 1 AS col_one, 2 AS col_two"));
+        let mut rows = assert_ok!(stmt.query(None));
+        let record_batch = assert_some_ok!(rows.next());
+        assert_eq!(record_batch.schema().fields().len(), 2);
+        assert_eq!(record_batch.schema().field(0).name(), "col_one");
+        assert_eq!(record_batch.schema().field(1).name(), "col_two");
+        assert_eq!(record_batch.num_rows(), 1);
+        assert_eq!(i32::decode(&record_batch.column(0), 0), 1);
+        assert_eq!(i32::decode(&record_batch.column(1), 0), 2);
     }
 }

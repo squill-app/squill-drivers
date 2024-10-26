@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod arrow;
 pub mod connection;
 pub mod decode;
 pub mod driver;

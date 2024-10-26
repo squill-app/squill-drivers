@@ -2556,6 +2556,7 @@ dependencies = [
  "futures",
  "squill-core",
  "tokio",
+ "tokio-test",
  "tracing",
 ]
 
@@ -2618,6 +2619,7 @@ dependencies = [
  "squill-core",
  "tempfile",
  "tokio-test",
+ "tracing",
  "url",
 ]
 

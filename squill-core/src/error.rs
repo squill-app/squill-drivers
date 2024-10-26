@@ -54,6 +54,8 @@ pub enum Error {
 
     NotFound,
 
+    Timeout,
+
     OutOfBounds {
         index: usize,
     },
@@ -65,6 +67,10 @@ pub enum Error {
 
     UnsupportedDataType {
         data_type: String,
+    },
+
+    ConnectionFailed {
+        message: String,
     },
 
     /// An error that doesn't fit in any of the other error types.
@@ -105,6 +111,7 @@ impl std::fmt::Display for Error {
         match self {
             Error::ArrowError { error } => write!(f, "{}", error),
             Error::ConstraintViolation { error } => write!(f, "{}", error),
+            Error::ConnectionFailed { message } => write!(f, "{}", message),
             Error::StorageFull { error } => write!(f, "{}", error),
             Error::DriverError { error } => write!(f, "{}", error),
             Error::DriverNotFound { scheme } => write!(f, "No driver found for scheme: {}", scheme),
@@ -125,6 +132,7 @@ impl std::fmt::Display for Error {
             Error::OutOfBounds { index } => write!(f, "Out of bounds index {}", index),
             Error::OutOfMemory { error } => write!(f, "{}", error),
             Error::UnsupportedDataType { data_type } => write!(f, "Unsupported type: {}", data_type),
+            Error::Timeout => write!(f, "Operation timed out"),
         }
     }
 }

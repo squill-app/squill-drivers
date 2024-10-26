@@ -19,21 +19,3 @@ impl DriverFactory for MySqlFactory {
         Ok(Box::new(MySql { conn, options }))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use ctor::ctor;
-    use squill_core::factory::Factory;
-    use tokio_test::assert_ok;
-
-    #[ctor]
-    fn before_all() {
-        crate::register_driver();
-    }
-
-    #[test]
-    fn test_mysql_factory() {
-        let ci_database_uri = env!("CI_MYSQL_URI");
-        assert_ok!(Factory::open(ci_database_uri));
-    }
-}

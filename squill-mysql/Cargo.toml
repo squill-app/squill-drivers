@@ -14,6 +14,7 @@ squill-core = { workspace = true }
 url = { workspace = true }
 arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 ctor = { workspace = true }

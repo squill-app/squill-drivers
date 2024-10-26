@@ -5,6 +5,7 @@ use arrow_array::builder::ArrayBuilder;
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use postgres::fallible_iterator::FallibleIterator;
+use squill_core::arrow::array_builder::ArrayBuilderAppender;
 use squill_core::driver::{DriverConnection, DriverOptionsRef, DriverStatement, Result};
 use squill_core::parameters::Parameters;
 use std::collections::HashMap;
@@ -38,32 +39,6 @@ pub(crate) struct PostgresStatement<'c> {
     pub(crate) inner: postgres::Statement,
     pub(crate) options: DriverOptionsRef,
 }
-
-pub trait ArrowArrayAppender<T> {
-    fn append_value(&mut self, value: Option<T>);
-}
-
-macro_rules! impl_arrow_array_appender {
-    ($data_type:ty, $builder_type:ty) => {
-        impl ArrowArrayAppender<$data_type> for dyn ArrayBuilder {
-            fn append_value(&mut self, value: Option<$data_type>) {
-                let builder = self.as_any_mut().downcast_mut::<$builder_type>().unwrap();
-                match value {
-                    Some(value) => builder.append_value(value),
-                    None => builder.append_null(),
-                }
-            }
-        }
-    };
-}
-
-impl_arrow_array_appender!(bool, arrow_array::builder::BooleanBuilder);
-impl_arrow_array_appender!(i16, arrow_array::builder::Int16Builder);
-impl_arrow_array_appender!(i32, arrow_array::builder::Int32Builder);
-impl_arrow_array_appender!(i64, arrow_array::builder::Int64Builder);
-impl_arrow_array_appender!(f32, arrow_array::builder::Float32Builder);
-impl_arrow_array_appender!(f64, arrow_array::builder::Float64Builder);
-impl_arrow_array_appender!(String, arrow_array::builder::StringBuilder);
 
 impl PostgresStatement<'_> {
     fn column_into_field(column: &postgres::Column) -> Field {
