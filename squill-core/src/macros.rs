@@ -121,10 +121,18 @@ macro_rules! assert_some {
     };
 }
 
-/// Assert that the expression returning a Option<Result<T, E>> is Some(Ok(value)) and return the value.
+/// Assert that the expression returning a `Option<Result<T, E>>` is `Some(Ok(T))` and return the value `T`.
 #[macro_export]
 macro_rules! assert_some_ok {
     ($expr:expr) => {
         tokio_test::assert_ok!($crate::assert_some!($expr))
+    };
+}
+
+/// Assert that the expression returning a `Result<Option<T>, E>` is `Ok(Some(T))` and return the value `T`.
+#[macro_export]
+macro_rules! assert_ok_some {
+    ($expr:expr) => {
+        $crate::assert_some!(tokio_test::assert_ok!($expr))
     };
 }

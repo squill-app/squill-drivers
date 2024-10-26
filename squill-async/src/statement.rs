@@ -81,15 +81,15 @@ impl Statement<'_> {
         })
     }
 
-    pub fn query_map_row<F, T>(
-        &mut self,
+    pub fn query_map_row<'s: 'r, 'r, F, T>(
+        &'s mut self,
         parameters: Option<Parameters>,
         mapping_fn: F,
-    ) -> BoxFuture<'_, Result<Option<T>>>
+    ) -> BoxFuture<'r, Result<Option<T>>>
     where
         F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>
             + std::marker::Send
-            + 'static,
+            + 'r + 's,
     {
         Box::pin(async move {
             let mut stream = self.query_rows(parameters).await?;

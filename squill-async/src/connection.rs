@@ -159,16 +159,19 @@ impl Connection {
         })
     }
 
-    pub fn query_map_row<S: Into<String>, F, T>(
-        &mut self,
+    pub fn query_map_row<'c, 's, 'r, S, F, T>(
+        &'c mut self,
         statement: S,
         parameters: Option<Parameters>,
         mapping_fn: F,
-    ) -> BoxFuture<'_, Result<Option<T>>>
+    ) -> BoxFuture<'r, Result<Option<T>>>
     where
+        'c: 'r,
+        's: 'r,
+        S: Into<String> + 's,
         F: FnOnce(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>
             + std::marker::Send
-            + 'static,
+            + 'r + 's,
     {
         let statement: String = statement.into();
         Box::pin(async move {
