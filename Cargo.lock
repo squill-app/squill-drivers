@@ -2549,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "squill-async"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "crossbeam-channel",
@@ -2561,8 +2561,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "squill-blocking"
+version = "0.2.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "squill-core",
+ "tokio-test",
+ "tracing",
+]
+
+[[package]]
 name = "squill-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2578,11 +2589,12 @@ dependencies = [
 
 [[package]]
 name = "squill-drivers"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "comfy-table",
  "criterion",
  "squill-async",
+ "squill-blocking",
  "squill-core",
  "squill-duckdb",
  "squill-mysql",
@@ -2593,7 +2605,7 @@ dependencies = [
 
 [[package]]
 name = "squill-duckdb"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2610,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "squill-mysql"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2625,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "squill-postgres"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2642,7 +2654,7 @@ dependencies = [
 
 [[package]]
 name = "squill-serde"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2654,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "squill-sqlite"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
