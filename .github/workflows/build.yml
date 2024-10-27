@@ -6,6 +6,8 @@ env:
   RUST_BACKTRACE: full
   RUST_LOG: "info"
   RUST_LOG_SPAN_EVENTS: full
+  CI_POSTGRES_URI: postgresql://postgres:pass@localhost:5432
+  CI_MYSQL_URI: mysql://root:pass@localhost:3306/ci
 
 jobs:
   build:

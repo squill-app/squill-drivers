@@ -174,7 +174,8 @@ mod sqlite_tests {
 
     #[test]
     fn test_bind() {
-        let blob: Vec<u8> = vec![0x00, 0x01, 0x42];
+        // TODO: test blob
+        // let blob: Vec<u8> = vec![0x00, 0x01, 0x42];
         let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
         assert_execute_eq!(conn, "CREATE TABLE test_integer (value INTEGER)", 0);
         assert_execute_eq!(conn, "CREATE TABLE test_text (value VARCHAR)", 0);
