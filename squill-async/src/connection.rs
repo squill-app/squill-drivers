@@ -1,5 +1,6 @@
 use crate::statement::Statement;
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use futures::future::{err, BoxFuture};
 use squill_core::driver;
 use squill_core::driver::{DriverConnection, DriverStatement};
@@ -188,6 +189,7 @@ pub(crate) enum Command {
     Execute { statement: String, parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<u64>> },
     ExecutePreparedStatement { parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<u64>> },
     FetchCursor { tx: mpsc::Sender<driver::Result<Option<RecordBatch>>> },
+    GetSchema { tx: oneshot::Sender<driver::Result<SchemaRef>> },
     PrepareStatement { statement: String, tx: oneshot::Sender<driver::Result<()>> },
     QueryPreparedStatement { parameters: Option<Parameters>, tx: oneshot::Sender<driver::Result<()>> },
 }
@@ -201,6 +203,7 @@ impl Display for Command {
             Command::Execute { statement, .. } => write!(f, "Execute: {}", statement),
             Command::ExecutePreparedStatement { .. } => write!(f, "ExecutePreparedStatement"),
             Command::FetchCursor { .. } => write!(f, "FetchCursor"),
+            Command::GetSchema { .. } => write!(f, "GetSchema"),
             Command::PrepareStatement { statement, .. } => write!(f, "PrepareStatement: {}", statement),
             Command::QueryPreparedStatement { .. } => write!(f, "QueryPreparedStatement"),
         }
@@ -359,6 +362,11 @@ impl Connection {
                         send_response(tx, Err(e))?;
                     }
                 },
+
+                Ok(Command::GetSchema { tx }) => {
+                    let schema = driver_stmt.schema();
+                    send_response(tx, Ok(schema))?;
+                }
 
                 Ok(Command::DropStatement { tx }) => {
                     //

@@ -10,7 +10,8 @@ pub use streams::RowStream;
 #[cfg(test)]
 mod async_tests {
     use crate::Connection;
-    use squill_core::{assert_ok, assert_ok_some};
+    use futures::StreamExt;
+    use squill_core::{assert_ok, assert_ok_some, assert_some_ok};
 
     #[tokio::test]
     async fn test_statement_query_map_row() {
@@ -58,5 +59,16 @@ mod async_tests {
             })
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn test_statement_schema() {
+        let mut conn = assert_ok!(Connection::open("mock://").await);
+        let mut stmt = assert_ok!(conn.prepare("SELECT 1").await);
+        assert_some_ok!(assert_ok!(stmt.query(None).await).next().await);
+        let schema = assert_ok!(stmt.schema().await);
+        assert_eq!(schema.fields().len(), 2);
+        assert_eq!(schema.field(0).name(), "id");
+        assert_eq!(schema.field(1).name(), "username");
     }
 }

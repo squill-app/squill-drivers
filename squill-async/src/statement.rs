@@ -1,5 +1,6 @@
 use crate::connection::{into_error, Command};
 use crate::{await_on, RecordBatchStream, RowStream};
+use arrow_schema::SchemaRef;
 use futures::future::{err, BoxFuture};
 use futures::StreamExt;
 use squill_core::parameters::Parameters;
@@ -31,6 +32,14 @@ pub struct Statement<'c> {
 impl Statement<'_> {
     pub(crate) fn new(command_tx: crossbeam_channel::Sender<Command>) -> Self {
         Self { command_tx, phantom: std::marker::PhantomData }
+    }
+
+    pub fn schema(&self) -> BoxFuture<'_, Result<SchemaRef>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::GetSchema { tx }) {
+            return Box::pin(err::<SchemaRef, Error>(Error::DriverError { error: e.into() }));
+        }
+        await_on!(rx)
     }
 
     pub fn execute(&mut self, parameters: Option<Parameters>) -> BoxFuture<'_, Result<u64>> {

@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
+use crate::driver::DriverStatement;
 use crate::driver::MockDriverConnection;
 use crate::driver::MockDriverFactory;
 use crate::driver::MockDriverStatement;
 use crate::driver::Result;
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 
 /// A factory for mocking a {{DriverConnection}}.
 ///
@@ -63,6 +67,12 @@ impl MockDriverStatement {
         let query_stmt = stmt.clone();
         let execute_stmt = stmt.clone();
         let mut mock_statement = MockDriverStatement::new();
+        mock_statement.expect_schema().returning(|| {
+            Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("id", arrow_schema::DataType::Int32, true),
+                arrow_schema::Field::new("username", arrow_schema::DataType::Utf8, true),
+            ]))
+        });
         mock_statement.expect_execute().returning(move |parameters| match execute_stmt.starts_with("SELECT ") {
             false => {
                 if parameters.is_some() && execute_stmt.matches('?').count() != parameters.unwrap().len() {
