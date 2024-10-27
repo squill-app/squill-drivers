@@ -39,6 +39,5 @@ jobs:
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Running tests
-        run: |
-          cargo build --workspace --all-features
+      - name: Build
+        run: cargo build --workspace --all-features
