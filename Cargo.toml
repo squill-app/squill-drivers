@@ -93,7 +93,7 @@ serde = ["squill-serde"]
 
 [[example]]
 name = "rows"
-required-features = ["duckdb"]
+required-features = ["duckdb", "blocking-conn"]
 path = "./examples/rows.rs"
 
 [[bench]]

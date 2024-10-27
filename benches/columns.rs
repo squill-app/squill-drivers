@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use squill_drivers::blocking::{Connection, Statement};
+use squill_drivers::blocking_conn::{Connection, Statement};
 
 fn using_get(stmt: &mut Statement) {
     let rows = stmt.query_rows(None).unwrap();

@@ -1,6 +1,6 @@
 use comfy_table::Table;
-use squill_blocking::Connection;
 use squill_core::query;
+use squill_drivers::blocking_conn::Connection;
 use squill_drivers::{Result, Rows};
 
 fn main() -> Result<()> {
