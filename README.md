@@ -1,6 +1,6 @@
 > A simple set of drivers for accessing various database systems.
 
-[![build](https://img.shields.io/github/actions/workflow/status/squill-app/squill-drivers/check.yml?style=for-the-badge)](https://github.com/squill-app/squill-drivers/actions/workflows/check.yml)
+[![build](https://img.shields.io/github/actions/workflow/status/squill-app/squill-drivers/build.yml?style=for-the-badge)](https://github.com/squill-app/squill-drivers/actions/workflows/build.yml)
 [![codecov](https://img.shields.io/codecov/c/gh/squill-app/squill-drivers/settings/badge.svg?token=MZQU5H90OW&style=for-the-badge&logo=codecov)](https://codecov.io/github/squill-app/squill-drivers)
 
 The aim of this crate is to provide a unified interface for various database systems. Each database system is accessed
