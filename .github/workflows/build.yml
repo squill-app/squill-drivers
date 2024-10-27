@@ -6,8 +6,8 @@ env:
   RUST_BACKTRACE: full
   RUST_LOG: "info"
   RUST_LOG_SPAN_EVENTS: full
-  CI_POSTGRES_URI: postgresql://postgres:pass@localhost:5432
-  CI_MYSQL_URI: mysql://root:pass@localhost:3306/ci
+  CI_POSTGRES_URI: postgresql://postgres:password@localhost:5432/ci
+  CI_MYSQL_URI: mysql://user:password@localhost:3306/ci
 
 jobs:
   build:
@@ -31,6 +31,36 @@ jobs:
             os: macos-13
           - platform: windows-x64
             os: windows-2022
+
+    services:
+      mysql:
+        image: mysql:latest
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: ci
+          MYSQL_USER: user
+          MYSQL_PASSWORD: password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -u root -ppassword"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout repository
