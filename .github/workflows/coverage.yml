@@ -272,3 +272,61 @@ jobs:
         with:
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:latest
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: ci
+          MYSQL_USER: user
+          MYSQL_PASSWORD: password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -u root -ppassword"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: "llvm-tools-preview"
+
+      - name: Install grcov
+        uses: taiki-e/install-action@main
+        with:
+          tool: grcov
+
+      - name: Running tests
+        env:
+          CI_MYSQL_URI: mysql://user:password@localhost:3306/ci
+        run: |
+          cargo test --package squill-mysql
+
+      - name: Generate code coverage
+        run: |
+          grcov $(find . -name "rsql-*.profraw" -print) \
+            -s . \
+            --branch \
+            --ignore-not-existing \
+            --ignore='target/*' \
+            --ignore='benches/*' \
+            --ignore='examples/*' \
+            --ignore='/*' \
+            --binary-path ./target/debug/ \
+            --excl-line='#\[derive' \
+            -t lcov \
+            -o lcov.info
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
