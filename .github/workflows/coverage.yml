@@ -174,3 +174,44 @@ jobs:
         with:
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+  duckdb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: "llvm-tools-preview"
+
+      - name: Install grcov
+        uses: taiki-e/install-action@main
+        with:
+          tool: grcov
+
+      - name: Running tests
+        run: |
+          cargo test --package squill-duckdb --features bundled
+
+      - name: Generate code coverage for squill-duckdb
+        run: |
+          grcov $(find . -name "rsql-*.profraw" -print) \
+            -s . \
+            --branch \
+            --ignore-not-existing \
+            --ignore='target/*' \
+            --ignore='benches/*' \
+            --ignore='examples/*' \
+            --ignore='/*' \
+            --binary-path ./target/debug/ \
+            --excl-line='#\[derive' \
+            -t lcov \
+            -o lcov.info
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
