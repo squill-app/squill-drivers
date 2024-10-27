@@ -14,9 +14,6 @@ jobs:
   codecov:
     runs-on: ubuntu-latest
     steps:
-      - name: Install curl & build-essential
-        run: apt-get update && apt-get install -y curl build-essential libssl-dev pkg-config
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
