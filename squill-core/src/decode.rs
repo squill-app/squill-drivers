@@ -94,14 +94,19 @@ impl Decode for uuid::Uuid {
         if index >= array.len() {
             return Err(Error::OutOfBounds { index });
         }
-        match array.as_any().downcast_ref::<arrow_array::StringArray>() {
-            Some(array) => {
-                let value = array.value(index);
-                uuid::Uuid::parse_str(value).map_err(|e| Error::InternalError { error: e.into() })
+        match array.data_type() {
+            DataType::Utf8 => {
+                let str = array.as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(index);
+                uuid::Uuid::parse_str(str).map_err(|e| Error::InternalError { error: e.into() })
             }
-            None => {
-                Err(Error::InvalidType { expected: "StringArray".to_string(), actual: array.data_type().to_string() })
+            DataType::Binary => {
+                let bytes = array.as_any().downcast_ref::<arrow_array::BinaryArray>().unwrap().value(index);
+                uuid::Uuid::from_slice(bytes).map_err(|e| Error::InternalError { error: e.into() })
             }
+            _ => Err(Error::InvalidType {
+                expected: "Utf8 or Binary".to_string(),
+                actual: array.data_type().to_string(),
+            }),
         }
     }
 }
@@ -205,6 +210,7 @@ impl Decode for chrono::DateTime<chrono::Utc> {
     }
 }
 
+/// Decoding a NaiveTime.
 impl Decode for chrono::NaiveTime {
     fn decode(array: &dyn Array, index: usize) -> Self {
         match Self::try_decode(array, index) {
@@ -228,6 +234,41 @@ impl Decode for chrono::NaiveTime {
             }
             None => Err(Error::InvalidType {
                 expected: "Time64MicrosecondArray".to_string(), // FIXME:
+                actual: array.data_type().to_string(),
+            }),
+        }
+    }
+}
+
+/// Decoding a NaiveDate.
+impl Decode for chrono::NaiveDate {
+    fn decode(array: &dyn Array, index: usize) -> Self {
+        match Self::try_decode(array, index) {
+            Ok(time) => time,
+            Err(e) => panic!("Unable to decode NaiveDate (reason: {:?})", e),
+        }
+    }
+
+    fn try_decode(array: &dyn Array, index: usize) -> Result<Self> {
+        match array.data_type() {
+            DataType::Date32 => {
+                // Date32 is the number of days since the UNIX epoch.
+                const DAYS_FROM_BCE_TO_UNIX: i32 = 719_163;
+                let days = array.as_any().downcast_ref::<arrow_array::Date32Array>().unwrap().value(index);
+                match chrono::NaiveDate::from_num_days_from_ce_opt(days + DAYS_FROM_BCE_TO_UNIX) {
+                    Some(date) => Ok(date),
+                    None => Err(Error::InternalError { error: format!("Out of range date: {days}.").into() }),
+                }
+            }
+            DataType::Utf8 => {
+                let str = array.as_any().downcast_ref::<arrow_array::StringArray>().unwrap().value(index);
+                match chrono::NaiveDate::parse_from_str(str, "%Y-%m-%d") {
+                    Ok(date) => Ok(date),
+                    Err(e) => Err(Error::InternalError { error: e.into() }),
+                }
+            }
+            _ => Err(Error::InvalidType {
+                expected: "Date32 or Utf8".to_string(),
                 actual: array.data_type().to_string(),
             }),
         }

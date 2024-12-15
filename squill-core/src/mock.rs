@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
-use crate::driver::DriverStatement;
 use crate::driver::MockDriverConnection;
 use crate::driver::MockDriverFactory;
 use crate::driver::MockDriverStatement;
 use crate::driver::Result;
 use arrow_array::RecordBatch;
-use arrow_schema::SchemaRef;
+use std::sync::Arc;
 
 /// A factory for mocking a {{DriverConnection}}.
 ///

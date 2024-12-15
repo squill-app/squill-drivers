@@ -10,7 +10,7 @@ authors.workspace = true
 
 # bytes is a dependency of postgres needed to implemt the `ToSql` trait
 [dependencies]
-postgres = { version = "0.19", features = ["with-uuid-1", "with-chrono-0_4"] }
+postgres = { version = "0.19" }
 postgres-types = { version = "*" }
 postgres-protocol = { version = "*" }
 squill-core = { workspace = true }
@@ -18,8 +18,12 @@ url = { workspace = true }
 arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
 bytes = { version = "*" }
+byteorder = { version = "*" }
+chrono = { version = "*" }
+tracing = { workspace = true }
 
 [dev-dependencies]
 ctor = { workspace = true }
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
+uuid = { workspace = true }

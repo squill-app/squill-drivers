@@ -1,6 +1,7 @@
 use crate::statement::Statement;
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
+use crossbeam_channel::TryRecvError;
 use futures::future::{err, BoxFuture};
 use squill_core::driver;
 use squill_core::driver::{DriverConnection, DriverStatement};
@@ -12,7 +13,7 @@ use squill_core::{debug_clean_statement, Result};
 use std::fmt::{Display, Formatter};
 use std::thread;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, error, event, Level};
+use tracing::{debug, error, event, trace, Level};
 
 /// Convert [std::error::Error] into an [Error].
 ///
@@ -323,8 +324,13 @@ impl Connection {
                 //
                 // The channel is closed (connection is closed).
                 //
-                Err(_e) => {
-                    error!("Channel communication failed.");
+                Err(e) => {
+                    let error = TryRecvError::from(e);
+                    if let TryRecvError::Disconnected = error {
+                        trace!("Channel communication disconnected");
+                    } else {
+                        error!("Channel communication failed: {}", error);
+                    }
                     break;
                 }
             }

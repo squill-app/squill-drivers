@@ -2074,10 +2074,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f66ea23a2d0e5734297357705193335e0a957696f34bed2f2faefacb2fec336f"
 dependencies = [
  "bytes",
- "chrono",
  "fallible-iterator 0.2.0",
  "postgres-protocol",
- "uuid",
 ]
 
 [[package]]
@@ -2549,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "squill-async"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2563,7 +2561,7 @@ dependencies = [
 
 [[package]]
 name = "squill-blocking"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2574,7 +2572,7 @@ dependencies = [
 
 [[package]]
 name = "squill-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2590,7 +2588,7 @@ dependencies = [
 
 [[package]]
 name = "squill-drivers"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "comfy-table",
  "criterion",
@@ -2606,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "squill-duckdb"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2623,7 +2621,7 @@ dependencies = [
 
 [[package]]
 name = "squill-mysql"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
@@ -2638,11 +2636,13 @@ dependencies = [
 
 [[package]]
 name = "squill-postgres"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",
+ "byteorder",
  "bytes",
+ "chrono",
  "ctor",
  "postgres",
  "postgres-protocol",
@@ -2650,12 +2650,14 @@ dependencies = [
  "squill-core",
  "tempfile",
  "tokio-test",
+ "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
 name = "squill-serde"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2667,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "squill-sqlite"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrow-array",
  "arrow-schema",

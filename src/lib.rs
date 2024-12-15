@@ -61,4 +61,6 @@ pub fn register_drivers() {
     squill_duckdb::register_driver();
     #[cfg(feature = "sqlite")]
     squill_sqlite::register_driver();
+    #[cfg(feature = "postgres")]
+    squill_postgres::register_driver();
 }
