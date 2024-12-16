@@ -24,6 +24,14 @@ impl DriverConnection for Postgres {
         DRIVER_NAME
     }
 
+    /// Check if the connection is alive.
+    fn ping(&mut self) -> Result<()> {
+        match self.client.is_valid(self.options.connection_timeout) {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     fn close(self: Box<Self>) -> Result<()> {
         Ok(())
     }

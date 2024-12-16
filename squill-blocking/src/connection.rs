@@ -33,6 +33,11 @@ impl Connection {
         self.inner.driver_name()
     }
 
+    /// Check if the connection is alive.
+    pub fn ping(&mut self) -> Result<()> {
+        self.inner.ping().map_err(Error::from)
+    }
+
     /// Prepare a statement.
     ///
     /// Return a [Statement] that can be later used to by `query` or `execute` functions. A prepared statement can be
@@ -102,13 +107,19 @@ impl Connection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use squill_core::params;
+    use squill_core::{assert_ok, params};
 
     #[test]
     fn test_prepare() {
         let mut conn = Connection::open("mock://").unwrap();
         assert!(conn.prepare("XINSERT").is_err());
         assert!(conn.prepare("SELECT 1").is_ok());
+    }
+
+    #[test]
+    fn test_ping() {
+        let mut conn = Connection::open("mock://").unwrap();
+        assert_ok!(conn.ping());
     }
 
     #[test]

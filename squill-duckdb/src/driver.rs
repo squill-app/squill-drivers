@@ -14,6 +14,19 @@ impl DriverConnection for DuckDB {
         Ok(Box::new(DuckDBStatement { inner: Rc::new(RefCell::new(self.conn.prepare(statement)?)) }))
     }
 
+    /// Check if the connection is alive.
+    fn ping(&mut self) -> Result<()> {
+        // A DuckDB connection does not involve a network layer as it operates in-process. This means the concept of
+        // "checking if a connection is alive" is less about verifying network connectivity (like with other databases)
+        // and more about ensuring the internal state of the connection and database instance is healthy.
+        // Executing a lightweight, non-intrusive query (like SELECT 1) is a simple and efficient way to validate the
+        // connection.
+        match self.conn.execute("SELECT 1", []) {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     fn close(self: std::boxed::Box<DuckDB>) -> Result<()> {
         let result = self.conn.close();
         match result {
@@ -38,6 +51,11 @@ mod tests {
     #[test]
     fn test_open_memory() {
         assert_ok!(Factory::open(IN_MEMORY_URI));
+    }
+
+    #[test]
+    fn test_ping() {
+        assert_ok!(assert_ok!(Factory::open(IN_MEMORY_URI)).ping());
     }
 
     #[test]

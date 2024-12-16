@@ -10,6 +10,19 @@ impl DriverConnection for Sqlite {
         DRIVER_NAME
     }
 
+    /// Check if the connection is alive.
+    fn ping(&mut self) -> Result<()> {
+        // An SQLite connection does not involve a network layer as it operates in-process. This means the concept of
+        // "checking if a connection is alive" is less about verifying network connectivity (like with other databases)
+        // and more about ensuring the internal state of the connection and database instance is healthy.
+        // Executing a lightweight, non-intrusive query (like SELECT 1) is a simple and efficient way to validate the
+        // connection.
+        match self.conn.execute_batch("SELECT 1") {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     fn close(self: Box<Self>) -> Result<()> {
         Ok(())
     }

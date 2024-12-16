@@ -99,6 +99,15 @@ impl Connection {
         }
     }
 
+    /// Check if the connection is alive.
+    pub fn ping(&mut self) -> BoxFuture<'static, Result<()>> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.command_tx.send(Command::Ping { tx }) {
+            return Box::pin(err::<(), Error>(Error::InternalError { error: e.into() }));
+        }
+        await_on!(rx)
+    }
+
     pub fn close(self) -> BoxFuture<'static, Result<()>> {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self.command_tx.send(Command::Close { tx }) {
@@ -184,6 +193,7 @@ impl Connection {
 }
 
 pub(crate) enum Command {
+    Ping { tx: oneshot::Sender<driver::Result<()>> },
     Close { tx: oneshot::Sender<driver::Result<()>> },
     DropStatement { tx: oneshot::Sender<driver::Result<()>> },
     DropCursor,
@@ -198,6 +208,7 @@ pub(crate) enum Command {
 impl Display for Command {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Command::Ping { .. } => write!(f, "Ping"),
             Command::Close { .. } => write!(f, "Close"),
             Command::DropStatement { .. } => write!(f, "DropStatement"),
             Command::DropCursor => write!(f, "DropCursor"),
@@ -266,6 +277,14 @@ impl Connection {
         loop {
             let command = command_rx.recv();
             match command {
+                //
+                // Ping the connection.
+                //
+                Ok(Command::Ping { tx }) => {
+                    let result = driver_conn.ping();
+                    send_response(tx, result)?;
+                }
+
                 //
                 // Close the connection.
                 //

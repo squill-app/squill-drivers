@@ -39,6 +39,12 @@ mod postgres_tests {
     }
 
     #[test]
+    fn test_ping() {
+        let ci_database_uri = env!("CI_POSTGRES_URI");
+        assert_ok!(assert_ok!(Factory::open(ci_database_uri)).ping());
+    }
+
+    #[test]
     fn test_execute() {
         let mut conn = assert_ok!(Factory::open(env!("CI_POSTGRES_URI")));
         assert_execute_eq!(conn, "CREATE TEMPORARY TABLE ci_test (id INTEGER PRIMARY KEY, name TEXT)", 0);

@@ -68,6 +68,12 @@ mod sqlite_tests {
     }
 
     #[test]
+    fn test_ping() {
+        let mut conn = assert_ok!(Factory::open(IN_MEMORY_URI));
+        assert_ok!(conn.ping());
+    }
+
+    #[test]
     fn test_basics() {
         let conn = assert_ok!(Factory::open(IN_MEMORY_URI));
         assert_eq!(conn.driver_name(), "sqlite");

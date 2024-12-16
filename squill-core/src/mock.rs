@@ -126,6 +126,7 @@ impl MockDriverConnection {
     pub fn with_default() -> MockDriverConnection {
         let mut mock_connection = MockDriverConnection::default();
         mock_connection.expect_driver_name().return_const("mock".to_string());
+        mock_connection.expect_ping().returning(|| Ok(()));
         mock_connection.expect_close().returning(|| Ok(()));
         mock_connection.expect_prepare().returning(|stmt| match stmt {
             "XINSERT" => Err("Invalid statement".into()),

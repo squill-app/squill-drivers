@@ -14,6 +14,12 @@ mod async_tests {
     use squill_core::{assert_ok, assert_ok_some, assert_some_ok};
 
     #[tokio::test]
+    async fn test_ping() {
+        let mut conn = assert_ok!(Connection::open("mock://").await);
+        assert_ok!(conn.ping().await);
+    }
+
+    #[tokio::test]
     async fn test_statement_query_map_row() {
         let mut conn = assert_ok!(Connection::open("mock://").await);
         struct TestUser {

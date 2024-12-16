@@ -50,6 +50,12 @@ mod mysql_tests {
     }
 
     #[test]
+    fn test_ping() {
+        let mut conn = assert_ok!(Factory::open(env!("CI_MYSQL_URI")));
+        assert_ok!(conn.ping());
+    }
+
+    #[test]
     fn test_query() {
         let mut conn = assert_ok!(Factory::open(env!("CI_MYSQL_URI")));
         let mut stmt = assert_ok!(conn.prepare("SELECT 1 AS col_one, 2 AS col_two"));

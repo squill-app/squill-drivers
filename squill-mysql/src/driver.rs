@@ -21,6 +21,14 @@ impl DriverConnection for MySql {
         DRIVER_NAME
     }
 
+    /// Check if the connection is alive.
+    fn ping(&mut self) -> Result<()> {
+        match self.conn.ping() {
+            Ok(_) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     fn close(self: Box<Self>) -> Result<()> {
         Ok(())
     }

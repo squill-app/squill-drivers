@@ -35,6 +35,9 @@ pub trait DriverConnection {
     where
         'c: 's;
 
+    /// Check if the connection is alive.
+    fn ping(&mut self) -> Result<()>;
+
     /// Close the connection.
     ///
     /// Since the connection may be borrowed, the connection should be closed when the last reference to the connection
@@ -95,11 +98,18 @@ pub struct DriverOptions {
 
     /// The maximum number of bytes that can be written in a single batch (default is 1MB).
     pub max_batch_bytes: usize,
+
+    /// The timeout for the connection (default is 30 seconds).
+    pub connection_timeout: std::time::Duration,
 }
 
 impl Default for DriverOptions {
     fn default() -> Self {
-        Self { max_batch_rows: 1_0000, max_batch_bytes: 1_000_000 }
+        Self {
+            max_batch_rows: 1_0000,
+            max_batch_bytes: 1_000_000,
+            connection_timeout: std::time::Duration::from_secs(30),
+        }
     }
 }
 
