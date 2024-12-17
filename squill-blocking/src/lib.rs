@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 
 pub mod connection;
+pub mod rows;
 pub mod statement;
 
 pub use connection::Connection;
+pub use rows::Rows;
 pub use statement::Statement;
 
 #[cfg(test)]

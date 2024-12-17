@@ -8,7 +8,7 @@ use squill_core::driver::{DriverConnection, DriverStatement};
 use squill_core::error::Error;
 use squill_core::factory::Factory;
 use squill_core::parameters::Parameters;
-use squill_core::rows::Row;
+use squill_core::row::Row;
 use squill_core::{debug_clean_statement, Result};
 use std::fmt::{Display, Formatter};
 use std::thread;

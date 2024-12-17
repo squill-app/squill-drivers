@@ -18,8 +18,7 @@ pub use squill_core::decode::Decode;
 pub use squill_core::error::Error;
 pub use squill_core::factory::Factory;
 pub use squill_core::parameters::Parameters;
-pub use squill_core::rows::Row;
-pub use squill_core::rows::Rows;
+pub use squill_core::row::Row;
 pub use squill_core::Result;
 
 // Re-export the macros.
@@ -36,6 +35,7 @@ pub mod async_conn {
 #[cfg(feature = "blocking-conn")]
 pub mod blocking_conn {
     pub use squill_blocking::Connection;
+    pub use squill_blocking::Rows;
     pub use squill_blocking::Statement;
 }
 

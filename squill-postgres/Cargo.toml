@@ -8,7 +8,7 @@ categories.workspace = true
 edition.workspace = true
 authors.workspace = true
 
-# bytes is a dependency of postgres needed to implemt the `ToSql` trait
+# bytes is a dependency of postgres needed to implement the `ToSql` trait
 [dependencies]
 postgres = { version = "0.19" }
 postgres-types = { version = "*" }

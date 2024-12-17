@@ -2,7 +2,7 @@ use crate::connection::Command;
 use arrow_array::RecordBatch;
 use futures::Stream;
 use squill_core::driver;
-use squill_core::rows::Row;
+use squill_core::row::Row;
 use squill_core::Error;
 use squill_core::Result;
 use std::pin::Pin;

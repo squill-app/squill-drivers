@@ -1,8 +1,9 @@
+use crate::rows::Rows;
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use squill_core::driver::DriverStatement;
 use squill_core::parameters::Parameters;
-use squill_core::rows::{Row, Rows};
+use squill_core::row::Row;
 use squill_core::{Error, Result};
 
 /// A prepared statement.

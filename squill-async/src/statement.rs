@@ -4,7 +4,7 @@ use arrow_schema::SchemaRef;
 use futures::future::{err, BoxFuture};
 use futures::StreamExt;
 use squill_core::parameters::Parameters;
-use squill_core::rows::Row;
+use squill_core::row::Row;
 use squill_core::{Error, Result};
 use tokio::sync::oneshot;
 use tracing::debug;

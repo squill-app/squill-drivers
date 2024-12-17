@@ -7,7 +7,7 @@ pub mod error;
 pub mod factory;
 pub mod macros;
 pub mod parameters;
-pub mod rows;
+pub mod row;
 pub mod values;
 
 /// The mock module is only available when running test or when the `mock` feature is enabled.
