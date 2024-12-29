@@ -113,6 +113,31 @@ impl Statement<'_> {
             }
         })
     }
+
+    pub fn query_map_rows<'s: 'r, 'r, F, T>(
+        &'s mut self,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> BoxFuture<'r, Result<Vec<T>>>
+    where
+        F: Fn(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> + std::marker::Send + 'r + 's,
+        T: std::marker::Send,
+    {
+        Box::pin(async move {
+            let mut results = Vec::new();
+            let mut stream = self.query_rows(parameters).await?;
+            while let Some(row) = stream.next().await {
+                match row {
+                    Ok(row) => {
+                        let mapped = mapping_fn(row)?;
+                        results.push(mapped);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(results)
+        })
+    }
 }
 
 impl Drop for Statement<'_> {

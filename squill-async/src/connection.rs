@@ -190,6 +190,26 @@ impl Connection {
             statement.query_map_row(parameters, mapping_fn).await
         })
     }
+
+    pub fn query_map_rows<'c, 's, 'r, S, F, T>(
+        &'c mut self,
+        statement: S,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> BoxFuture<'r, Result<Vec<T>>>
+    where
+        'c: 'r,
+        's: 'r,
+        S: Into<String> + 's,
+        F: Fn(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> + std::marker::Send + 'r + 's,
+        T: Send,
+    {
+        let statement: String = statement.into();
+        Box::pin(async move {
+            let mut statement = self.prepare(statement).await?;
+            statement.query_map_rows(parameters, mapping_fn).await
+        })
+    }
 }
 
 pub(crate) enum Command {

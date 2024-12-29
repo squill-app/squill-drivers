@@ -68,6 +68,29 @@ mod async_tests {
     }
 
     #[tokio::test]
+    async fn test_statement_query_map_rows() {
+        let mut conn = assert_ok!(Connection::open("mock://").await);
+        struct TestUser {
+            id: i32,
+            username: String,
+        }
+
+        let users = assert_ok!(
+            conn.query_map_rows("SELECT 2", None, |row| Ok(TestUser {
+                id: row.get::<_, _>(0),
+                username: row.get::<_, _>(1)
+            }))
+            .await
+        );
+
+        assert_eq!(users.len(), 2);
+        assert_eq!(users[0].id, 1);
+        assert_eq!(users[0].username, "user1");
+        assert_eq!(users[1].id, 2);
+        assert_eq!(users[1].username, "user2");
+    }
+
+    #[tokio::test]
     async fn test_statement_schema() {
         let mut conn = assert_ok!(Connection::open("mock://").await);
         let mut stmt = assert_ok!(conn.prepare("SELECT 1").await);

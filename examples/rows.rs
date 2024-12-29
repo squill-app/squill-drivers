@@ -1,7 +1,8 @@
 use comfy_table::Table;
 use squill_core::query;
 use squill_drivers::blocking_conn::Connection;
-use squill_drivers::{Result, Rows};
+use squill_drivers::blocking_conn::Rows;
+use squill_drivers::Result;
 
 fn main() -> Result<()> {
     squill_drivers::register_drivers();

@@ -106,7 +106,7 @@ pub struct DriverOptions {
 impl Default for DriverOptions {
     fn default() -> Self {
         Self {
-            max_batch_rows: 1_0000,
+            max_batch_rows: 1_000,
             max_batch_bytes: 1_000_000,
             connection_timeout: std::time::Duration::from_secs(30),
         }

@@ -64,7 +64,7 @@ impl Statement<'_> {
     ///
     /// ```rust
     /// use squill_blocking::Connection;
-    /// struct TestUser {
+    /// struct User {
     ///     id: i32,
     ///     username: String,
     /// }
@@ -74,7 +74,7 @@ impl Statement<'_> {
     /// // some rows
     /// let user = conn
     ///     .query_map_row("SELECT 1", None, |row| {
-    ///         Ok(TestUser { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
+    ///         Ok(User { id: row.get::<_, _>(0), username: row.get::<_, _>(1) })
     ///     })
     ///     .unwrap()
     ///     .unwrap();
@@ -89,6 +89,51 @@ impl Statement<'_> {
             Some(row) => Ok(Some(mapping_fn(row)?)),
             None => Ok(None),
         }
+    }
+
+    /// Query a statement and map each row to a value.
+    ///
+    /// Returns a vector of the mapped values.
+    /// Each rows is mapped to a value using the provided mapping function, if the mapping function returns an error,
+    /// the query is aborted and the error is returned.
+    ///
+    /// # Example
+    /// ```rust
+    /// use squill_blocking::Connection;
+    ///
+    /// struct User {
+    ///    id: i32,
+    ///   username: String,
+    /// }
+    ///
+    /// let mut conn = Connection::open("mock://").unwrap();
+    ///
+    /// let users = conn
+    ///    .query_map_rows("SELECT 2", None, |row| Ok(User { id: row.get::<_, _>(0), username: row.get::<_, _>(1) }))
+    ///    .unwrap();
+    ///
+    /// assert_eq!(users.len(), 2);
+    /// assert_eq!(users[0].id, 1);
+    /// assert_eq!(users[0].username, "user1");
+    /// assert_eq!(users[1].id, 2);
+    /// assert_eq!(users[1].username, "user2");
+    /// ```
+    pub fn query_map_rows<F, T>(&mut self, parameters: Option<Parameters>, mapping_fn: F) -> Result<Vec<T>>
+    where
+        F: Fn(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>,
+    {
+        let rows = self.query_rows(parameters)?;
+        let mut results = Vec::new();
+        for row in rows {
+            match row {
+                Ok(row) => match mapping_fn(row) {
+                    Ok(mapped_row) => results.push(mapped_row),
+                    Err(e) => return Err(Error::from(e)),
+                },
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(results)
     }
 
     pub fn schema(&self) -> SchemaRef {

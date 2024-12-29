@@ -84,6 +84,22 @@ impl Connection {
         statement.query_map_row(parameters, mapping_fn)
     }
 
+    /// Query a statement and return a vector of values decoded by a mapping function.
+    ///
+    /// See [Statement::query_map_rows] for more information.
+    pub fn query_map_rows<S: AsRef<str>, F, T>(
+        &mut self,
+        statement: S,
+        parameters: Option<Parameters>,
+        mapping_fn: F,
+    ) -> Result<Vec<T>>
+    where
+        F: Fn(Row) -> std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>,
+    {
+        let mut statement = self.prepare(statement)?;
+        statement.query_map_rows(parameters, mapping_fn)
+    }
+
     /// Close the connection.
     ///
     /// Because a {{Statement}} borrows the connection, all statements must be dropped before calling `close()`.
@@ -157,6 +173,47 @@ mod tests {
             .query_map_row("SELECT 1", None, |row| {
                 if row.get::<_, i32>(0) == 2 {
                     Ok(TestUser { id: 2, username: "user2".to_string() })
+                } else {
+                    Err("error".into())
+                }
+            })
+            .is_err());
+    }
+
+    #[test]
+    fn test_query_map_rows() {
+        struct User {
+            id: i32,
+            username: String,
+        }
+
+        let mut conn = Connection::open("mock://").unwrap();
+
+        // some rows
+        let users = conn
+            .query_map_rows("SELECT 2", None, |row| Ok(User { id: row.get::<_, _>(0), username: row.get::<_, _>(1) }))
+            .unwrap();
+        assert_eq!(users.len(), 2);
+        assert_eq!(users[0].id, 1);
+        assert_eq!(users[0].username, "user1");
+        assert_eq!(users[1].id, 2);
+        assert_eq!(users[1].username, "user2");
+
+        // no rows
+        let users =
+            conn.query_map_rows("SELECT 0", None, |row| Ok(User { id: row.get(0), username: "".to_string() })).unwrap();
+        assert_eq!(users.len(), 0);
+
+        // error by the query
+        assert!(conn
+            .query_map_rows("SELECT X", None, |row| Ok(User { id: row.get(0), username: "".to_string() }))
+            .is_err());
+
+        // error by the mapping function
+        assert!(conn
+            .query_map_rows("SELECT 1", None, |row| {
+                if row.get::<_, i32>(0) == 2 {
+                    Ok(User { id: 2, username: "user2".to_string() })
                 } else {
                     Err("error".into())
                 }
